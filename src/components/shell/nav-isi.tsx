@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { LogOut } from "lucide-react";
+import { KeyRound, LogOut } from "lucide-react";
 import { NAV, ROLE_LABEL, menuAktif, type RoleCode } from "@/lib/rbac";
 import { inisial } from "@/lib/format";
 import { cn } from "@/lib/utils";
@@ -103,6 +103,14 @@ export function KakiNav({
         >
           {inisial(nama)}
         </span>
+        <Link
+          href="/akun"
+          aria-label="Ganti password"
+          title="Ganti password"
+          className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-surface-alt hover:text-ink"
+        >
+          <KeyRound className="size-4" aria-hidden />
+        </Link>
         <form action="/api/auth/logout" method="post">
           <button
             type="submit"
@@ -129,6 +137,14 @@ export function KakiNav({
             {roleNama || ROLE_LABEL[role]}
           </p>
         </div>
+        <Link
+          href="/akun"
+          aria-label="Ganti password"
+          title="Ganti password"
+          className="rounded-md p-1.5 text-ink-faint transition-colors hover:bg-surface-alt hover:text-ink"
+        >
+          <KeyRound className="size-4" aria-hidden />
+        </Link>
         <form action="/api/auth/logout" method="post">
           <button
             type="submit"

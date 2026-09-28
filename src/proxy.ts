@@ -10,7 +10,7 @@ import { canAccess } from "@/lib/rbac";
  * proxy saja tidak cukup karena Route Handler bisa dipanggil langsung.
  */
 
-const PUBLIC = ["/login", "/api/auth/login"];
+const PUBLIC = ["/login", "/api/auth/login", "/api/auth/sesi-berakhir"];
 
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
@@ -26,6 +26,16 @@ export default async function proxy(request: NextRequest) {
     const url = new URL("/login", request.url);
     if (pathname !== "/") url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
+  }
+
+  /*
+   * Password sementara (akun baru / direset Super Admin) wajib diganti
+   * sebelum bekerja. Tanpa ini setiap password staf selamanya adalah
+   * password yang dipilih atau dilihat orang lain — dan siapa pun yang
+   * mengetahuinya bisa bekerja atas nama staf itu.
+   */
+  if (session.mustChangePw && pathname !== "/akun" && !pathname.startsWith("/api/auth/")) {
+    return NextResponse.redirect(new URL("/akun", request.url));
   }
 
   if (!canAccess(session.role, pathname)) {

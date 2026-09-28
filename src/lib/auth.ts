@@ -1,4 +1,6 @@
 import "server-only";
+import { createHash } from "node:crypto";
+import { cache } from "react";
 import bcrypt from "bcryptjs";
 import { redirect } from "next/navigation";
 import type { RowDataPacket } from "mysql2";
@@ -17,21 +19,81 @@ type UserRow = RowDataPacket & {
   must_change_pw: number;
   site_id: number | null;
   site_nama: string | null;
+  /** `site_id` bila cabangnya masih aktif, selain itu NULL. */
+  site_aktif: number | null;
   role_code: RoleCode;
   role_nama: string;
+  /** Penugasan cabang tambahan, terurut — bahan sidik akun. */
+  site_tambahan: string | null;
 };
+
+/**
+ * Hash bcrypt SUNGGUHAN (60 karakter, cost 10) untuk username yang tidak
+ * ada. Yang lama hanya 59 karakter — bcryptjs langsung mengembalikan
+ * `false` tanpa menghitung apa pun, sehingga username tak dikenal dijawab
+ * ~1 ms dan yang terdaftar ~80 ms: daftar akun bisa ditebak dari waktu
+ * respons saja.
+ */
+const HASH_PENGGANTI = "$2b$10$MVudUl1UCzEz4aHduYpMDeHuSinX0hR60VmViNcL6HTRTpxQOO5oG";
+
+/**
+ * SIDIK AKUN — ringkasan hal yang membuat sebuah sesi sah: hash password,
+ * peran, cabang induk, dan penugasan cabang tambahan. Ikut ditandatangani
+ * di dalam token dan dibandingkan ulang ke database pada setiap permintaan
+ * server (`sesiMasihSah`). Begitu salah satunya berubah — password direset,
+ * peran diganti, penugasan cabang diubah — seluruh sesi lama berakhir.
+ * Tanpa ini akun yang dinonaktifkan atau diturunkan perannya tetap bekerja
+ * sampai tokennya kedaluwarsa (10 jam).
+ */
+function sidikAkun(row: UserRow): string {
+  return createHash("sha256")
+    .update([row.password_hash, row.role_code, row.site_id ?? "-", row.site_tambahan ?? "-"].join("|"))
+    .digest("base64url")
+    .slice(0, 24);
+}
+
+/** Kolom akun yang dipakai bersama oleh login dan pemeriksaan sesi. */
+const SQL_AKUN = `
+  SELECT u.id, u.nama, u.username, u.password_hash, u.is_active, u.must_change_pw,
+         u.site_id, s.nama AS site_nama,
+         IF(s.id IS NOT NULL AND s.is_active = 1 AND s.deleted_at IS NULL, s.id, NULL) AS site_aktif,
+         r.code AS role_code, r.nama AS role_nama,
+         (SELECT GROUP_CONCAT(us.site_id ORDER BY us.site_id)
+            FROM user_sites us WHERE us.user_id = u.id) AS site_tambahan
+    FROM users u
+    JOIN roles r ON r.id = u.role_id
+    LEFT JOIN sites s ON s.id = u.site_id`;
+
+/**
+ * Menyusun isi sesi dari baris akun. Cabang induk yang sudah DITUTUP tidak
+ * lagi jadi cabang kerja: staf dipindah ke penugasan aktif pertamanya, dan
+ * staf operasional tanpa satu pun cabang aktif tidak mendapat sesi.
+ */
+async function sesiDariBaris(row: UserRow): Promise<SessionUser | null> {
+  const siteIds = await cabangPengguna(row.id, row.site_aktif);
+  const superAdmin = row.role_code === "super_admin";
+  if (!superAdmin && siteIds.length === 0) return null;
+  const siteId = superAdmin ? row.site_aktif : siteIds[0];
+  return {
+    id: row.id,
+    nama: row.nama,
+    username: row.username,
+    role: row.role_code,
+    roleNama: row.role_nama,
+    siteId,
+    siteNama: siteId !== null && siteId === row.site_aktif ? row.site_nama : null,
+    siteIds,
+    mustChangePw: Boolean(row.must_change_pw),
+    sv: sidikAkun(row),
+  };
+}
 
 export async function verifyCredentials(
   username: string,
   password: string,
 ): Promise<SessionUser | null> {
   const row = await queryOne<UserRow>(
-    `SELECT u.id, u.nama, u.username, u.password_hash, u.is_active, u.must_change_pw,
-            u.site_id, s.nama AS site_nama,
-            r.code AS role_code, r.nama AS role_nama
-       FROM users u
-       JOIN roles r ON r.id = u.role_id
-       LEFT JOIN sites s ON s.id = u.site_id
+    `${SQL_AKUN}
       WHERE u.username = ? AND u.deleted_at IS NULL
       LIMIT 1`,
     [username],
@@ -39,24 +101,54 @@ export async function verifyCredentials(
 
   // Perbandingan tetap dijalankan walau user tidak ada, agar waktu respons
   // tidak membocorkan username mana yang terdaftar.
-  const hash = row?.password_hash ?? "$2b$10$invalidinvalidinvalidinvalidinvalidinvalidinvalidinv";
+  const hash = row?.password_hash ?? HASH_PENGGANTI;
   const cocok = await bcrypt.compare(password, hash);
 
   if (!row || !cocok || !row.is_active) return null;
 
-  await execute(`UPDATE users SET last_login_at = NOW() WHERE id = ?`, [row.id]);
+  const sesi = await sesiDariBaris(row);
+  if (!sesi) return null;
 
-  return {
-    id: row.id,
-    nama: row.nama,
-    username: row.username,
-    role: row.role_code,
-    roleNama: row.role_nama,
-    siteId: row.site_id,
-    siteNama: row.site_nama,
-    siteIds: await cabangPengguna(row.id, row.site_id),
-    mustChangePw: Boolean(row.must_change_pw),
-  };
+  await execute(`UPDATE users SET last_login_at = NOW() WHERE id = ?`, [row.id]);
+  return sesi;
+}
+
+/**
+ * Apakah sesi masih mencerminkan akun di database: aktif, belum dihapus,
+ * dan sidiknya sama. Di-`cache` per permintaan — layout, halaman, dan
+ * komponen memanggil requireSession() berkali-kali dalam satu render.
+ */
+export const sesiMasihSah = cache(
+  async (userId: number, sv: string | undefined): Promise<boolean> => {
+    if (!sv) return false; // token lama tanpa sidik: masuk ulang sekali
+    const row = await queryOne<UserRow>(
+      `${SQL_AKUN} WHERE u.id = ? AND u.deleted_at IS NULL LIMIT 1`,
+      [userId],
+    );
+    return Boolean(row && row.is_active && sidikAkun(row) === sv);
+  },
+);
+
+/**
+ * Sesi yang sah menurut token DAN database, atau null — untuk halaman yang
+ * tidak boleh mengalihkan paksa (login, beranda).
+ */
+export async function sesiSah(): Promise<SessionUser | null> {
+  const session = await getSession();
+  if (!session) return null;
+  return (await sesiMasihSah(session.id, session.sv)) ? session : null;
+}
+
+/**
+ * Isi sesi baru untuk pengguna yang sedang masuk — dipakai setelah ia
+ * mengganti password sendiri: sidiknya berubah, jadi token lama tidak sah.
+ */
+export async function sesiBaruUntuk(userId: number): Promise<SessionUser | null> {
+  const row = await queryOne<UserRow>(
+    `${SQL_AKUN} WHERE u.id = ? AND u.deleted_at IS NULL AND u.is_active = 1 LIMIT 1`,
+    [userId],
+  );
+  return row ? sesiDariBaris(row) : null;
 }
 
 /**
@@ -109,6 +201,13 @@ export const hashPassword = (plain: string) => bcrypt.hash(plain, 10);
 export async function requireSession(): Promise<SessionUser> {
   const session = await getSession();
   if (!session) redirect("/login");
+  /*
+   * Token saja tidak cukup: akun bisa dinonaktifkan, perannya diganti, atau
+   * passwordnya direset setelah token terbit. Sesi yang tidak lagi cocok
+   * dengan database dihapus lewat route handler (Server Component tidak
+   * boleh menulis cookie), lalu pengguna diminta masuk ulang.
+   */
+  if (!(await sesiMasihSah(session.id, session.sv))) redirect("/api/auth/sesi-berakhir");
   return session;
 }
 

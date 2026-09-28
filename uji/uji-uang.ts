@@ -339,7 +339,9 @@ const klaimB = await buatKlaim(klaimBaruSchema.parse({
 await ajukanKlaim(klaimB.id, site, admin);
 const barisB = await barisKlaim(klaimB.id);
 await verifikasiKlaim(klaimB.id, site, {
-  baris: barisB.map((b) => ({ claim_item_id: Number(b.id), nilai_disetujui: Number(b.nilai_diajukan) })),
+  baris: barisB.map((b) => ({
+    claim_item_id: Number(b.id), nilai_disetujui: Number(b.nilai_diajukan), alasan_koreksi: undefined,
+  })),
 });
 await catatPembayaranKlaim(klaimB.id, site,
   bayarKlaimSchema.parse({ tanggal: hariIni, jumlah: 80000, metode: "transfer", ref: "TRF-UJI" }), admin);

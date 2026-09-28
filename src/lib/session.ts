@@ -46,6 +46,12 @@ export type SessionUser = {
    */
   siteIds: number[];
   mustChangePw: boolean;
+  /**
+   * Sidik akun saat token terbit — lihat `sidikAkun()` di lib/auth.ts.
+   * Opsional hanya karena token lama belum membawanya; token tanpa sidik
+   * dianggap tidak sah dan pemiliknya diminta masuk ulang.
+   */
+  sv?: string;
 };
 
 /** Cabang yang boleh dipilih pengguna ini. Murni, tanpa akses database. */
@@ -62,11 +68,28 @@ export function bolehPindahCabang(session: SessionUser): boolean {
   return session.role === "super_admin" || session.siteIds.length > 1;
 }
 
+/** Nilai contoh di .env.example — publik di repositori, jadi bukan rahasia. */
+const SECRET_CONTOH = "ganti-dengan-string-acak-minimal-32-karakter-sebelum-dipakai";
+let sudahDiperingatkan = false;
+
 function secret(): Uint8Array {
   const s = process.env.SESSION_SECRET;
   if (!s || s.length < 32) {
     throw new Error(
       "SESSION_SECRET belum diset atau kurang dari 32 karakter. Lihat .env.example",
+    );
+  }
+  /*
+   * Dengan nilai contoh, siapa pun yang pernah membaca repositori bisa
+   * menandatangani token Super Admin sendiri. Sengaja PERINGATAN, bukan
+   * penghentian: deploy berjalan otomatis, dan mematikan situs klinik di
+   * tengah pelayanan lebih merugikan daripada memberi tahu operatornya.
+   */
+  if (s === SECRET_CONTOH && !sudahDiperingatkan) {
+    sudahDiperingatkan = true;
+    console.error(
+      "[KEAMANAN] SESSION_SECRET masih memakai nilai contoh dari .env.example — " +
+        "token sesi bisa dipalsukan. Ganti dengan string acak lalu restart aplikasi.",
     );
   }
   return new TextEncoder().encode(s);

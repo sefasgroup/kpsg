@@ -1,4 +1,5 @@
 import "server-only";
+import { randomInt } from "node:crypto";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { execute, query, queryOne, transaction, limitAman } from "./db";
 import { hashPassword } from "./auth";
@@ -183,8 +184,10 @@ export async function daftarPengguna(): Promise<PenggunaRow[]> {
 export function passwordSementara(): string {
   const abjad = "abcdefghjkmnpqrstuvwxyz";
   const angka = "23456789";
+  // crypto.randomInt, bukan Math.random: keluaran Math.random bisa ditebak,
+  // dan password sementara adalah kredensial sungguhan sampai diganti.
   const ambil = (s: string, n: number) =>
-    Array.from({ length: n }, () => s[Math.floor(Math.random() * s.length)]).join("");
+    Array.from({ length: n }, () => s[randomInt(s.length)]).join("");
   return `${ambil(abjad, 4)}-${ambil(angka, 4)}-${ambil(abjad, 3)}`;
 }
 
