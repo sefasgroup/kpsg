@@ -333,11 +333,35 @@ export async function ringkasanSdm(
 // LB1 — Laporan Bulanan Data Kesakitan (Dinas Kesehatan)
 // ---------------------------------------------------------------------
 
+/**
+ * Kelompok umur baku formulir LB1. Umur dihitung pada TANGGAL KUNJUNGAN,
+ * bukan hari ini — laporan bulan lalu tidak boleh berubah karena pasiennya
+ * berulang tahun sesudahnya.
+ */
+export const KELOMPOK_UMUR_LB1 = [
+  { kode: "0_7h", label: "0–7 hr", sql: "x.hari BETWEEN 0 AND 7" },
+  { kode: "8_28h", label: "8–28 hr", sql: "x.hari BETWEEN 8 AND 28" },
+  { kode: "1_11b", label: "1–11 bl", sql: "x.hari > 28 AND x.tahun < 1" },
+  { kode: "1_4t", label: "1–4 th", sql: "x.tahun BETWEEN 1 AND 4" },
+  { kode: "5_9t", label: "5–9 th", sql: "x.tahun BETWEEN 5 AND 9" },
+  { kode: "10_14t", label: "10–14 th", sql: "x.tahun BETWEEN 10 AND 14" },
+  { kode: "15_19t", label: "15–19 th", sql: "x.tahun BETWEEN 15 AND 19" },
+  { kode: "20_44t", label: "20–44 th", sql: "x.tahun BETWEEN 20 AND 44" },
+  { kode: "45_54t", label: "45–54 th", sql: "x.tahun BETWEEN 45 AND 54" },
+  { kode: "55_59t", label: "55–59 th", sql: "x.tahun BETWEEN 55 AND 59" },
+  { kode: "60_69t", label: "60–69 th", sql: "x.tahun BETWEEN 60 AND 69" },
+  { kode: "70t", label: "≥70 th", sql: "x.tahun >= 70" },
+] as const;
+
 export type BarisLb1 = RowDataPacket & {
   code: string;
   nama_id: string;
   kelompok: string;
-  /* Baru = kunjungan pertama pasien; lama = kunjungan ulangan. */
+  /*
+   * KASUS baru/lama, bukan kunjungan baru/lama: kasus baru bila diagnosa
+   * ICD-10 ini BELUM PERNAH ditegakkan untuk pasien tersebut sebelumnya.
+   * Kolom kelompok umur (u_<kode>_l / u_<kode>_p) menghitung kasus baru.
+   */
   baru_l: number;
   baru_p: number;
   lama_l: number;
@@ -367,25 +391,55 @@ export async function lb1Morbiditas(
   dari: string,
   sampai: string,
 ): Promise<BarisLb1[]> {
+  /*
+   * Dulu baru/lama diambil dari `visits.jenis_kunjungan` — "pertama kali
+   * ke klinik". Pasien lama yang datang dengan ISPA baru tercatat kasus
+   * LAMA, sehingga morbiditas kasus baru yang dipakai Dinkes terlalu kecil.
+   * Kini: kasus baru bila tidak ada diagnosa final (bukan banding) dengan
+   * kode yang sama untuk pasien itu pada kunjungan sebelumnya — di cabang
+   * mana pun, karena rekam medisnya satu.
+   */
+  const kolomUmur = KELOMPOK_UMUR_LB1.flatMap((k) => [
+    `SUM(x.baru = 1 AND x.jk = 'L' AND (${k.sql})) AS u_${k.kode}_l`,
+    `SUM(x.baru = 1 AND x.jk = 'P' AND (${k.sql})) AS u_${k.kode}_p`,
+  ]).join(", ");
   return query<BarisLb1>(
-    `SELECT ad.icd10_code AS code, ic.nama_id, COALESCE(ic.bab, '-') AS kelompok,
-            SUM(v.jenis_kunjungan = 'baru' AND pa.jenis_kelamin = 'L') AS baru_l,
-            SUM(v.jenis_kunjungan = 'baru' AND pa.jenis_kelamin = 'P') AS baru_p,
-            SUM(v.jenis_kunjungan = 'lama' AND pa.jenis_kelamin = 'L') AS lama_l,
-            SUM(v.jenis_kunjungan = 'lama' AND pa.jenis_kelamin = 'P') AS lama_p,
-            COUNT(*) AS total
-       FROM assessment_diagnoses ad
-       JOIN medical_assessments ma ON ma.id = ad.assessment_id
-       JOIN visits v    ON v.id = ma.visit_id
-       JOIN patients pa ON pa.id = v.patient_id
-       JOIN icd10_codes ic ON ic.code = ad.icd10_code
-      WHERE ma.site_id = ?
-        AND v.tanggal BETWEEN ? AND ?
-        AND v.status <> 'batal'
-        AND ma.status = 'final'
-        AND ad.tipe <> 'banding'
-      GROUP BY ad.icd10_code, ic.nama_id, ic.bab
-      ORDER BY total DESC, ic.nama_id`,
+    `SELECT x.code, x.nama_id, x.kelompok,
+            SUM(x.baru = 1 AND x.jk = 'L') AS baru_l,
+            SUM(x.baru = 1 AND x.jk = 'P') AS baru_p,
+            SUM(x.baru = 0 AND x.jk = 'L') AS lama_l,
+            SUM(x.baru = 0 AND x.jk = 'P') AS lama_p,
+            COUNT(*) AS total,
+            ${kolomUmur}
+       FROM (
+         SELECT ad.icd10_code AS code, ic.nama_id, COALESCE(ic.bab, '-') AS kelompok,
+                pa.jenis_kelamin AS jk,
+                DATEDIFF(v.tanggal, pa.tanggal_lahir) AS hari,
+                TIMESTAMPDIFF(YEAR, pa.tanggal_lahir, v.tanggal) AS tahun,
+                NOT EXISTS (
+                  SELECT 1 FROM assessment_diagnoses ad2
+                    JOIN medical_assessments ma2 ON ma2.id = ad2.assessment_id
+                    JOIN visits v2 ON v2.id = ma2.visit_id
+                   WHERE v2.patient_id = v.patient_id
+                     AND ad2.icd10_code = ad.icd10_code
+                     AND ad2.tipe <> 'banding'
+                     AND ma2.status = 'final'
+                     AND v2.status <> 'batal'
+                     AND (v2.tanggal < v.tanggal OR (v2.tanggal = v.tanggal AND v2.id < v.id))
+                ) AS baru
+           FROM assessment_diagnoses ad
+           JOIN medical_assessments ma ON ma.id = ad.assessment_id
+           JOIN visits v    ON v.id = ma.visit_id
+           JOIN patients pa ON pa.id = v.patient_id
+           JOIN icd10_codes ic ON ic.code = ad.icd10_code
+          WHERE ma.site_id = ?
+            AND v.tanggal BETWEEN ? AND ?
+            AND v.status <> 'batal'
+            AND ma.status = 'final'
+            AND ad.tipe <> 'banding'
+       ) x
+      GROUP BY x.code, x.nama_id, x.kelompok
+      ORDER BY total DESC, x.nama_id`,
     [siteId, dari, sampai],
   );
 }

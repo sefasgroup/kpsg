@@ -97,7 +97,40 @@ export async function riwayatKunjungan(
     `SELECT v.id, v.no_visit, v.tanggal, v.status,
             pl.nama AS poli, s.nama AS site_nama,
             d.nama AS dokter, sub.nama AS dokter_pengganti,
-            ma.subjective, ma.objective, ma.assessment, ma.plan, ma.edukasi,
+            /*
+             * S dan O disusun dari kolom SOAP TERSTRUKTUR (sejak migrasi
+             * soap-detail), dengan teks bebas lama sebagai cadangan. Form
+             * dokter tidak lagi mengisi subjective/objective, sehingga
+             * membacanya saja membuat seluruh kunjungan baru tampil tanpa
+             * anamnesis dan pemeriksaan di riwayat pasien.
+             */
+            NULLIF(CONCAT_WS('
+',
+              CASE ma.jenis_anamnesis
+                WHEN 'auto' THEN 'Autoanamnesis'
+                WHEN 'allo' THEN CONCAT('Alloanamnesis', IFNULL(CONCAT(' (', ma.sumber_anamnesis, ')'), ''))
+              END,
+              CONCAT('Keluhan utama: ', ma.keluhan_utama),
+              CONCAT('Riwayat penyakit sekarang: ', ma.riwayat_penyakit),
+              CONCAT('Riwayat pengobatan: ', ma.riwayat_pengobatan),
+              CONCAT('Riwayat alergi: ', ma.riwayat_alergi),
+              ma.subjective), '') AS subjective,
+            NULLIF(CONCAT_WS('
+',
+              CONCAT('Keadaan umum: ', ma.keadaan_umum),
+              CONCAT('Keadaan gizi: ', ma.keadaan_gizi),
+              IF(JSON_VALID(ma.status_lokalis),
+                 NULLIF(CONCAT_WS(' ',
+                   NULLIF(JSON_UNQUOTE(JSON_EXTRACT(ma.status_lokalis, '$.catatan')), ''),
+                   IF(JSON_LENGTH(ma.status_lokalis, '$.titik') > 0,
+                      CONCAT('(', JSON_LENGTH(ma.status_lokalis, '$.titik'), ' titik pada diagram tubuh)'),
+                      NULL)), ''),
+                 NULL),
+              ma.objective), '') AS objective,
+            ma.assessment,
+            NULLIF(CONCAT_WS('
+', ma.plan, CONCAT('Terapi: ', ma.terapi)), '') AS plan,
+            ma.edukasi,
             ma.status AS status_asesmen,
 
             (SELECT GROUP_CONCAT(CONCAT(ad.icd10_code, ' — ', ic.nama_id, ' (', ad.tipe, ')')

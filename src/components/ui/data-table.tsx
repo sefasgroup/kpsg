@@ -11,7 +11,7 @@ import {
   type SortingState,
 } from "@tanstack/react-table";
 import { ChevronDown, ChevronUp, ChevronsUpDown } from "lucide-react";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Button } from "./button";
 import { cn } from "@/lib/utils";
 
@@ -49,9 +49,25 @@ export function DataTable<T>({
     getFilteredRowModel: getFilteredRowModel(),
     getPaginationRowModel: getPaginationRowModel(),
     initialState: { pagination: { pageSize } },
+    /*
+     * Jangan kembali ke halaman 1 setiap kali `data` berganti. Tabel di
+     * layar yang disegarkan berkala (SegarkanBerkala, tiap 30 detik)
+     * menerima larik baru setiap kali — dengan bawaan TanStack, petugas yang
+     * sedang membuka halaman 3 terlempar ke halaman 1 di tengah pekerjaan.
+     * Halaman yang melampaui jumlah data tetap dikoreksi di bawah.
+     */
+    autoResetPageIndex: false,
   });
 
   const rows = table.getRowModel().rows;
+
+  // Data menyusut (mis. pasien selesai dilayani) → halaman aktif mungkin
+  // tidak ada lagi; geser ke halaman terakhir yang masih ada.
+  const halamanMaks = Math.max(0, table.getPageCount() - 1);
+  const halaman = table.getState().pagination.pageIndex;
+  useEffect(() => {
+    if (halaman > halamanMaks) table.setPageIndex(halamanMaks);
+  }, [halaman, halamanMaks, table]);
 
   return (
     <div className="flex flex-col gap-3">

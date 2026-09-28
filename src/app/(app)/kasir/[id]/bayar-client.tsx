@@ -83,6 +83,13 @@ export function BayarClient({
   const [selesai, setSelesai] = useState(sudahLunas);
   const [batalkan, setBatalkan] = useState(false);
   const [alasanBatal, setAlasanBatal] = useState("");
+  /*
+   * Nilai struk pembayaran yang BARU SAJA diproses di layar ini. Tanpa
+   * salinan ini, struk otomatis membaca `struk.tersimpan` — cuplikan server
+   * dari SEBELUM pembayaran (dibayar 0, diskon 0, metode tunai) — karena
+   * router.refresh() belum tentu selesai saat pencetakan dimulai.
+   */
+  const [nilaiLunas, setNilaiLunas] = useState<typeof struk.tersimpan | null>(null);
 
   const cetakStruk = useReactToPrint({
     contentRef: strukRef,
@@ -122,7 +129,7 @@ export function BayarClient({
   // Ketika sudah lunas, struk memakai nilai tersimpan; sebelum itu, memakai
   // nilai yang sedang dihitung di layar.
   const nilaiStruk = selesai
-    ? struk.tersimpan
+    ? (nilaiLunas ?? struk.tersimpan)
     : {
         subtotal,
         diskon,
@@ -150,6 +157,18 @@ export function BayarClient({
         return;
       }
 
+      // Sama dengan yang ditulis server: total & kembalian dari balasan
+      // server, metode `penjamin` bila pasien tidak menanggung apa pun.
+      setNilaiLunas({
+        subtotal,
+        diskon,
+        pembulatan,
+        total: hasil.data.total,
+        dibayar: tunai ? uang : tanggungPasien,
+        kembalian: hasil.data.kembalian,
+        metode: tanggungPasien === 0 ? "penjamin" : metode,
+        noRef: ref || null,
+      });
       setSelesai(true);
       toast.success(
         hasil.data.kembalian > 0
@@ -174,6 +193,7 @@ export function BayarClient({
       }
       setBatalkan(false);
       setAlasanBatal("");
+      setNilaiLunas(null);
       setSelesai(false);
       toast.success(
         `Pembayaran ${hasil.data.noInvoice} dibatalkan. Tagihan kembali ke antrean kasir.`,

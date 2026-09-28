@@ -595,10 +595,24 @@ export async function simpanHitungan(
       throw new Error("Opname ini sudah difinalkan — hitungannya tidak bisa diubah.");
     }
 
+    /*
+     * Saldo sistem item ini DIPOTRET ULANG saat hitungannya disimpan.
+     *
+     * Angka fisik diketik tepat setelah rak dihitung, jadi saldo pada detik
+     * ini adalah pembanding yang benar. Memakai potret saat lembar dibuat
+     * menghitung dua kali setiap pergerakan di antaranya: resep 10 tablet
+     * yang diserahkan sebelum rak dihitung sudah tercermin di rak (90), lalu
+     * selisih -10 terhadap potret lama (100) memotongnya sekali lagi → 80.
+     * Pergerakan SETELAH hitungan disimpan tetap aman — finalisasi hanya
+     * menerapkan selisih, bukan memaksa saldo.
+     */
     const [res] = await conn.execute<ResultSetHeader>(
-      `UPDATE stock_opname_items SET qty_fisik = ?, catatan = ?
-        WHERE opname_id = ? AND item_id = ?`,
-      [input.qty_fisik, input.catatan ?? null, input.opname_id, input.item_id],
+      `UPDATE stock_opname_items x
+          SET x.qty_fisik = ?, x.catatan = ?,
+              x.qty_sistem = COALESCE((SELECT s.qty_on_hand FROM item_stocks s
+                                        WHERE s.site_id = ? AND s.item_id = x.item_id), 0)
+        WHERE x.opname_id = ? AND x.item_id = ?`,
+      [input.qty_fisik, input.catatan ?? null, siteId, input.opname_id, input.item_id],
     );
     if (res.affectedRows === 0) {
       throw new Error("Item ini tidak termasuk dalam lembar opname.");
@@ -611,8 +625,10 @@ export async function simpanHitungan(
  *
  * Delta yang diterapkan adalah `qty_fisik - qty_sistem` (selisih saat
  * penghitungan), BUKAN `qty_fisik - saldo sekarang`. Bedanya penting:
- * bila ada resep yang diserahkan setelah lembar hitung dibuat, memaksa
- * saldo menjadi qty_fisik akan menghapus pengeluaran yang sah itu.
+ * bila ada resep yang diserahkan setelah hitungan disimpan, memaksa saldo
+ * menjadi qty_fisik akan menghapus pengeluaran yang sah itu. `qty_sistem`
+ * dipotret ulang per item saat hitungannya disimpan (simpanHitungan), jadi
+ * pergerakan SEBELUM rak dihitung tidak terhitung dua kali.
  */
 export async function finalkanOpname(
   opnameId: number,

@@ -8,7 +8,7 @@ import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { EmptyState } from "@/components/ui/empty-state";
 import { StatCard } from "@/components/ui/stat-card";
 import { requireRole } from "@/lib/auth";
-import { kesiapanLb1, lb1Morbiditas } from "@/lib/laporan";
+import { KELOMPOK_UMUR_LB1, kesiapanLb1, lb1Morbiditas } from "@/lib/laporan";
 import { formatAngka, formatTanggalPendek } from "@/lib/format";
 import { akhirBulan, awalBulan, tanggalHariIni, tanggalValid } from "@/lib/tanggal";
 
@@ -36,7 +36,11 @@ export default async function Lb1Page({
 
   // Bulan takwim, bukan 30 hari bergulir — LB1 dikirim per bulan.
   const dari = tanggalValid(sp.dari) ? sp.dari : awalBulan(tanggalHariIni());
-  const sampai = tanggalValid(sp.sampai) ? sp.sampai : akhirBulan(dari);
+  // Dibatasi hari ini: kolom tanggalnya ber-`max` hari ini, dan akhir bulan
+  // berjalan di masa depan membuat formulir tidak bisa dikirim sama sekali.
+  const hariIni = tanggalHariIni();
+  const akhir = akhirBulan(dari);
+  const sampai = tanggalValid(sp.sampai) ? sp.sampai : akhir > hariIni ? hariIni : akhir;
 
   // Sekali jalan, lalu dipakai ulang — lihat catatan di layar SIPNAP.
   const baris = await lb1Morbiditas(siteId, dari, sampai);
@@ -79,7 +83,10 @@ export default async function Lb1Page({
           Laporan Bulanan Data Kesakitan untuk Dinas Kesehatan, disusun dari
           diagnosa ICD-10 pada asesmen yang sudah <strong>final</strong>.{" "}
           <strong>Diagnosa banding tidak dihitung</strong> — itu kemungkinan
-          yang sedang dipertimbangkan dokter, bukan penyakit yang dilaporkan.
+          yang sedang dipertimbangkan dokter, bukan penyakit yang dilaporkan.{" "}
+          <strong>Kasus baru</strong> = diagnosa itu pertama kali ditegakkan
+          untuk pasien tersebut; kunjungan berikutnya dengan diagnosa yang sama
+          dihitung kasus lama.
         </p>
       </Card>
 
@@ -191,6 +198,50 @@ export default async function Lb1Page({
           </div>
         )}
       </Card>
+
+      {baris.length > 0 ? (
+        <Card>
+          <CardHeader>
+            <CardTitle icon={FileSpreadsheet}>Kasus Baru per Kelompok Umur</CardTitle>
+            <span className="text-meta text-ink-faint">Umur pada tanggal kunjungan</span>
+          </CardHeader>
+          <div className="overflow-x-auto">
+            <table className="w-full text-meta">
+              <thead>
+                <tr className="border-b border-line bg-surface-alt text-label text-ink-muted">
+                  <th className="px-2 py-1.5 text-left" rowSpan={2}>Kode</th>
+                  {KELOMPOK_UMUR_LB1.map((k) => (
+                    <th key={k.kode} className="border-l border-line px-1 py-1 text-center whitespace-nowrap" colSpan={2}>
+                      {k.label}
+                    </th>
+                  ))}
+                </tr>
+                <tr className="border-b border-line bg-surface-alt text-label text-ink-muted">
+                  {KELOMPOK_UMUR_LB1.flatMap((k) => [
+                    <th key={k.kode + "l"} className="border-l border-line px-1 py-1 text-center">L</th>,
+                    <th key={k.kode + "p"} className="px-1 py-1 text-center">P</th>,
+                  ])}
+                </tr>
+              </thead>
+              <tbody>
+                {baris.map((b) => (
+                  <tr key={b.code} className="border-b border-line last:border-b-0">
+                    <td className="px-2 py-1 font-mono text-ink-muted" title={b.nama_id}>{b.code}</td>
+                    {KELOMPOK_UMUR_LB1.flatMap((k) => [
+                      <td key={k.kode + "l"} className="border-l border-line px-1 py-1 text-center tabular">
+                        {Number(b[`u_${k.kode}_l`]) || ""}
+                      </td>,
+                      <td key={k.kode + "p"} className="px-1 py-1 text-center tabular">
+                        {Number(b[`u_${k.kode}_p`]) || ""}
+                      </td>,
+                    ])}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      ) : null}
     </div>
   );
 }

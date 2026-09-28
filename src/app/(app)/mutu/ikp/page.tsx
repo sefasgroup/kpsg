@@ -49,8 +49,18 @@ export default async function IkpPage({
     ? sp.dari
     : awalBulan(tambahHari(sampai, -60));
 
+  /*
+   * Isi laporan (kronologi, nama & No. RM pasien, pelapor, analisis) hanya
+   * untuk yang menindaklanjutinya. Peran lain — termasuk kasir, yang layarnya
+   * sengaja tidak menampilkan detail klinis (§2.1) — hanya melihat laporan
+   * yang mereka buat sendiri. Membuka semua laporan ke semua rekan juga
+   * merusak pelaporan tanpa menyalahkan: siapa melaporkan siapa jadi terbaca.
+   */
   const [daftar, rekap] = await Promise.all([
-    daftarIkp(siteId, { dari, sampai, limit: 200 }),
+    daftarIkp(siteId, {
+      dari, sampai, limit: 200,
+      pelaporId: bolehTindakLanjut ? undefined : session.id,
+    }),
     rekapIkp(siteId, dari, sampai),
   ]);
 
@@ -128,9 +138,17 @@ export default async function IkpPage({
 
       <Card>
         <CardHeader>
-          <CardTitle icon={ShieldAlert}>Laporan Insiden</CardTitle>
+          <CardTitle icon={ShieldAlert}>
+            {bolehTindakLanjut ? "Laporan Insiden" : "Laporan Saya"}
+          </CardTitle>
           <Badge variant="brand">{daftar.length}</Badge>
         </CardHeader>
+        {bolehTindakLanjut ? null : (
+          <p className="mb-3 text-meta text-ink-muted">
+            Anda melihat laporan yang Anda buat sendiri. Laporan anonim tidak
+            tercantum di sini; seluruh laporan ditindaklanjuti Admin Cabang.
+          </p>
+        )}
 
         <div className="flex flex-col gap-3">
           <IkpClient

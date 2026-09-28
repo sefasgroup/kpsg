@@ -165,10 +165,16 @@ export default async function PemeriksaanPage({
    * yang sama, jadi dokter tidak mengetik ulang TTV atau ringkasan klinis —
    * dan tidak ada peluang salah ketik antara rekam medis dan surat.
    */
+  // Kolom SOAP terstruktur lebih dulu; `subjective`/`objective` hanya
+  // terisi pada asesmen lama (sebelum form terstruktur).
   const ringkasanKlinis = [
+    ["Keluhan utama", asesmen?.keluhan_utama],
+    ["Riwayat penyakit", asesmen?.riwayat_penyakit],
     ["Anamnesis", asesmen?.subjective],
+    ["Keadaan umum", asesmen?.keadaan_umum],
     ["Pemeriksaan", asesmen?.objective],
     ["Penilaian", asesmen?.assessment],
+    ["Terapi", asesmen?.terapi],
   ]
     .filter(([, isi]) => Boolean(isi))
     .map(([label, isi]) => `${label}: ${isi}`)

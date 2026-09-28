@@ -290,7 +290,16 @@ const ANGKA = [
 
 /** Terbilang untuk lama istirahat — mencegah angka diubah setelah dicetak. */
 function terbilang(n: number): string {
-  if (n >= 0 && n < ANGKA.length) return ANGKA[n];
-  if (n <= 30) return `dua puluh ${ANGKA[n - 20]}`;
-  return String(n);
+  if (!Number.isInteger(n) || n < 0 || n > 999) return String(n);
+  if (n < ANGKA.length) return ANGKA[n];
+  if (n < 100) {
+    // Dulu 21–30 selalu "dua puluh …", sehingga 30 tercetak "dua puluh
+    // sepuluh" — pada dokumen yang dipakai pasien sebagai bukti sah.
+    const puluh = Math.floor(n / 10);
+    const sisa = n % 10;
+    return `${ANGKA[puluh]} puluh${sisa ? " " + ANGKA[sisa] : ""}`;
+  }
+  const ratus = Math.floor(n / 100);
+  const sisa = n % 100;
+  return `${ratus === 1 ? "seratus" : ANGKA[ratus] + " ratus"}${sisa ? " " + terbilang(sisa) : ""}`;
 }

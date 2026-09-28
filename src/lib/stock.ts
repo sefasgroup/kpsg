@@ -127,12 +127,26 @@ async function alokasiFefo(
 ): Promise<{ batchId: number | null; qty: number; hpp: number | null }[]> {
   const untukPasien = UNTUK_PASIEN.includes(jenis);
 
+  /*
+   * Selain pemusnahan kadaluarsa, batch yang MASIH BERLAKU didahulukan dan
+   * batch kadaluarsa hanya dipakai bila yang berlaku sudah habis.
+   *
+   * Dulu kadaluarsa selalu di depan untuk pengeluaran non-pasien. Mencatat
+   * 3 kasa rusak dari batch yang masih baik lalu memotong batch kadaluarsa:
+   * angka "terkunci kadaluarsa" menyusut padahal barang kadaluarsanya masih
+   * di rak, sehingga stok TERSEDIA untuk pasien tampak lebih besar dari
+   * barang layak yang sungguh ada — dan resep bisa lolos untuk barang yang
+   * hanya bisa diambil dari stok kadaluarsa.
+   */
+  const kadaluarsaDulu = jenis === "keluar_kadaluarsa";
   const [batch] = await conn.execute<RowDataPacket[]>(
     `SELECT id, qty, hpp FROM item_batches
       WHERE site_id = ? AND item_id = ? AND qty > 0
         AND (? IS NULL OR id = ?)
         AND (? = 0 OR tanggal_kadaluarsa IS NULL OR tanggal_kadaluarsa >= CURDATE())
-      ORDER BY tanggal_kadaluarsa IS NULL, tanggal_kadaluarsa, id
+      ORDER BY (tanggal_kadaluarsa IS NOT NULL AND tanggal_kadaluarsa < CURDATE())
+                 ${kadaluarsaDulu ? "DESC" : "ASC"},
+               tanggal_kadaluarsa IS NULL, tanggal_kadaluarsa, id
       FOR UPDATE`,
     [siteId, itemId, batchId ?? null, batchId ?? null, untukPasien ? 1 : 0],
   );

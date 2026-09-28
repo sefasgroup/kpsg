@@ -259,11 +259,16 @@ const SELECT_IKP = `
 
 export async function daftarIkp(
   siteId: number | null,
-  opts: { status?: string; dari?: string; sampai?: string; limit?: number } = {},
+  opts: {
+    status?: string; dari?: string; sampai?: string; limit?: number;
+    /** Hanya laporan milik pelapor ini (peran selain Admin Cabang/Super Admin). */
+    pelaporId?: number;
+  } = {},
 ): Promise<IkpRow[]> {
   return query<IkpRow>(
     `${SELECT_IKP}
       WHERE (? IS NULL OR k.site_id = ?)
+        AND (? IS NULL OR k.pelapor_id = ?)
         AND (? IS NULL OR k.status = ?)
         AND (? IS NULL OR k.tanggal >= ?)
         AND (? IS NULL OR k.tanggal <= ?)
@@ -273,6 +278,7 @@ export async function daftarIkp(
       LIMIT ${limitAman(opts.limit ?? 100, 100, 500)}`,
     [
       siteId, siteId,
+      opts.pelaporId ?? null, opts.pelaporId ?? null,
       opts.status ?? null, opts.status ?? null,
       opts.dari ?? null, opts.dari ?? null,
       opts.sampai ?? null, opts.sampai ?? null,

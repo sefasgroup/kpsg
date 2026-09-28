@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import toast from "react-hot-toast";
 import { FlaskConical, Pill, Plus, Send, Trash2, TriangleAlert } from "lucide-react";
@@ -11,6 +11,7 @@ import { Badge } from "@/components/ui/badge";
 import { Field, Input, Textarea } from "@/components/ui/field";
 import { formatDesimal, formatRupiah } from "@/lib/format";
 import { cariObatAction, simpanResepAction } from "../actions";
+import { useResepDraf } from "./resep-draf";
 import { SignaInput } from "./signa-input";
 import { RacikanBuilder, racikanKosong, type Racikan } from "./racikan-builder";
 
@@ -50,6 +51,18 @@ export function ResepForm({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [menyimpan, setMenyimpan] = useState(false);
 
+  // Cuplikan isi yang terakhir tersimpan — pembanding "belum disimpan".
+  const [tersimpan, setTersimpan] = useState(() =>
+    JSON.stringify({ items: itemsAwal, racikans: racikansAwal, catatan: catatanAwal }),
+  );
+  const sekarang = JSON.stringify({ items, racikans, catatan });
+  const belumDisimpan = !terkunci && sekarang !== tersimpan;
+  const setBelumDisimpan = useResepDraf((s) => s.setBelumDisimpan);
+  useEffect(() => {
+    setBelumDisimpan(belumDisimpan);
+    return () => setBelumDisimpan(false);
+  }, [belumDisimpan, setBelumDisimpan]);
+
   const totalPaten = items.reduce((n, i) => n + i.qty * i.harga_satuan, 0);
   const totalRacikan = racikans.reduce(
     (n, r) =>
@@ -78,7 +91,9 @@ export function ResepForm({
         return;
       }
 
-      toast.success(`E-Resep ${hasil.data.noResep} terkirim ke apotek.`);
+      setTersimpan(JSON.stringify({ items, racikans, catatan }));
+      // Resep baru sampai di apotek saat asesmen difinalkan (§3.1).
+      toast.success(`E-Resep ${hasil.data.noResep} tersimpan — terkirim ke apotek saat asesmen difinalkan.`);
       router.refresh();
     } finally {
       setMenyimpan(false);
@@ -96,8 +111,8 @@ export function ResepForm({
           Resep sudah diterima apotek dan tidak bisa diubah dari sini.
         </p>
         <p className="mt-1 text-meta text-ink-muted">
-          Obat mungkin sedang disiapkan. Untuk merevisi, batalkan resep lalu
-          terbitkan resep baru.
+          Obat mungkin sedang disiapkan. Untuk merevisi, minta apotek menekan
+          “Kembalikan ke Dokter” — resepnya lalu bisa diubah lagi di sini.
         </p>
       </Card>
     );

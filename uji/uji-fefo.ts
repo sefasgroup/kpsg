@@ -310,14 +310,24 @@ ok(
   "hanya lewat jalur inilah barang kadaluarsa boleh keluar",
 );
 
+/*
+ * Kekurangan opname (dan pengeluaran rusak/koreksi) mendahulukan batch yang
+ * MASIH BERLAKU. Unit mana yang hilang tidak diketahui; memotong yang
+ * berlaku membuat stok tersedia untuk pasien paling-paling terlalu KECIL
+ * (resep tertolak padahal barangnya ada), sedangkan memotong yang
+ * kadaluarsa bisa membuatnya terlalu BESAR — resep lolos untuk barang yang
+ * hanya ada dalam bentuk kadaluarsa. Batch kadaluarsa tetap bisa tersentuh
+ * bila yang berlaku sudah habis.
+ */
 await potong(itemG, 1, { jenis: "keluar_opname" });
 ok(
-  "koreksi opname juga boleh menyentuhnya",
-  (await batchQty(itemG)).join(" ") === "SUDAH-LEWAT=6 MASIH-VALID=2",
+  "koreksi opname mendahulukan batch yang masih berlaku",
+  (await batchQty(itemG)).join(" ") === "SUDAH-LEWAT=7 MASIH-VALID=1",
+  (await batchQty(itemG)).join(" "),
 );
 
 /*
- * Inti keselamatannya: saldo gudang saat ini 8 (2 valid + 6 kadaluarsa).
+ * Inti keselamatannya: saldo gudang saat ini 8 (1 valid + 7 kadaluarsa).
  * Permintaan 4 untuk pasien HARUS ditolak — memenuhinya berarti diam-diam
  * mengambil 2 unit dari bagian yang batch-nya sudah kadaluarsa.
  */
@@ -336,18 +346,18 @@ ok(
   pesanKadaluarsa.includes("tidak boleh diserahkan"),
   pesanKadaluarsa.slice(0, 80),
 );
-ok("pesan menyebut jumlah yang terkunci", terkunci === 6);
+ok("pesan menyebut jumlah yang terkunci", terkunci === 7, String(terkunci));
 ok("saldo tidak berubah setelah penolakan", (await stok(itemG)) === 8);
 
 // Yang masih layak tetap bisa diserahkan.
-await potong(itemG, 2, { jenis: "keluar_resep" });
+await potong(itemG, 1, { jenis: "keluar_resep" });
 ok(
   "stok yang masih layak tetap bisa diserahkan",
-  (await stok(itemG)) === 6 && (await batchQty(itemG)).join(" ") === "SUDAH-LEWAT=6 MASIH-VALID=0",
+  (await stok(itemG)) === 7 && (await batchQty(itemG)).join(" ") === "SUDAH-LEWAT=7 MASIH-VALID=0",
 );
 
 // Pemusnahan tidak terhalang penguncian itu.
-await potong(itemG, 6, { jenis: "keluar_kadaluarsa" });
+await potong(itemG, 7, { jenis: "keluar_kadaluarsa" });
 ok(
   "pemusnahan tetap bisa mengosongkannya",
   (await stok(itemG)) === 0 &&

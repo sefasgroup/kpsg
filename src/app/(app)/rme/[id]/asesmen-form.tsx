@@ -24,6 +24,7 @@ import type { AlergiRow } from "@/lib/nurse";
 import {
   cariIcd10Action, cariTindakanAction, simpanAsesmenAction, tambahAlergiDokterAction,
 } from "../actions";
+import { useResepDraf } from "./resep-draf";
 
 export type Diagnosa = {
   icd10_code: string;
@@ -300,6 +301,14 @@ export function AsesmenForm({
 
   async function simpan(finalkan: boolean) {
     setError(null);
+    if (finalkan && useResepDraf.getState().belumDisimpan) {
+      const pesan =
+        "Ada perubahan e-resep yang belum disimpan. Tekan “Simpan Resep” dulu — " +
+        "finalisasi hanya mengirim resep yang sudah tersimpan ke apotek.";
+      setError(pesan);
+      toast.error(pesan, { duration: 7000 });
+      return;
+    }
     setMenyimpan(true);
     try {
       const hasil = await simpanAsesmenAction(visitId, {
