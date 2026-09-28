@@ -142,20 +142,27 @@ export async function buatOrderLab(
     let total = 0;
 
     for (const p of input.panels) {
+      // Tarif & nama dari master panel, bukan dari formulir (CLAUDE.md §4).
+      const [panelRows] = await conn.execute<RowDataPacket[]>(
+        `SELECT nama, tarif FROM lab_panels WHERE id = ? AND is_active = 1`,
+        [p.panel_id],
+      );
+      if (!panelRows[0]) throw new Error("Panel laboratorium tidak ditemukan atau nonaktif.");
+      const tarif = Number(panelRows[0].tarif);
       const [lop] = await conn.execute<ResultSetHeader>(
         `INSERT INTO lab_order_panels (order_id, panel_id, tarif) VALUES (?,?,?)`,
-        [orderId, p.panel_id, p.tarif],
+        [orderId, p.panel_id, tarif],
       );
       await tambahBarisTagihan(conn, {
         billingId,
         kategori: "laboratorium",
-        deskripsi: p.nama,
+        deskripsi: String(panelRows[0].nama),
         qty: 1,
-        hargaSatuan: p.tarif,
+        hargaSatuan: tarif,
         refType: REF_LAB,
         refId: lop.insertId,
       });
-      total += p.tarif;
+      total += tarif;
     }
 
     await hitungUlangTagihan(conn, billingId);

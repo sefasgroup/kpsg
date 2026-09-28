@@ -164,7 +164,7 @@ export default async function KlaimPage() {
                       </td>
                       <td className="px-2 py-1.5 text-right tabular">
                         {formatRupiah(Number(c.total_diajukan))}
-                        {Number(c.total_disetujui) > 0 &&
+                        {["disetujui", "lunas"].includes(String(c.status)) &&
                         Number(c.total_disetujui) !== Number(c.total_diajukan) ? (
                           <span className="block text-micro text-warning">
                             disetujui {formatRupiah(Number(c.total_disetujui))}

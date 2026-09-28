@@ -71,7 +71,7 @@ const SELECT_KLAIM = `
           * daripada yang pernah disepakati.
           */
          GREATEST(0,
-           IF(c.total_disetujui > 0, c.total_disetujui, c.total_diajukan)
+           IF(c.status IN ('disetujui','lunas'), c.total_disetujui, c.total_diajukan)
            - COALESCE((SELECT SUM(cp.jumlah) FROM claim_payments cp
                         WHERE cp.claim_id = c.id), 0)
          ) AS sisa,
@@ -353,6 +353,22 @@ export async function verifikasiKlaim(
     }
 
     /*
+     * Verifikasi ULANG ditolak begitu penjamin mulai membayar. Memotong nilai
+     * disetujui di bawah yang sudah dibayar membuat klaim macet: sisa tampil
+     * 0 tetapi status tak pernah lunas, pembayaran berikutnya ditolak, dan
+     * pembatalan juga ditolak karena sudah ada pembayaran.
+     */
+    const [bayar] = await conn.execute<RowDataPacket[]>(
+      `SELECT COUNT(*) AS n FROM claim_payments WHERE claim_id = ?`,
+      [claimId],
+    );
+    if (Number(bayar[0].n) > 0) {
+      throw new Error(
+        "Penjamin sudah mulai membayar klaim ini — nilai disetujuinya tidak bisa diverifikasi ulang.",
+      );
+    }
+
+    /*
      * Seluruh baris diambil SEKALI, bukan satu kueri per baris.
      *
      * Verifikasi klaim bulanan menyentuh ratusan baris; pola lama berarti
@@ -397,9 +413,11 @@ export async function verifikasiKlaim(
     );
     const totalDisetujui = Number(total[0].n);
 
+    // Ditolak seluruhnya → tidak ada yang tersisa untuk ditagih: klaim
+    // selesai (lunas), bukan menggantung selamanya sebagai piutang terlambat.
     await conn.execute(
-      `UPDATE claims SET total_disetujui = ?, status = 'disetujui' WHERE id = ?`,
-      [totalDisetujui, claimId],
+      `UPDATE claims SET total_disetujui = ?, status = ? WHERE id = ?`,
+      [totalDisetujui, totalDisetujui > 0 ? "disetujui" : "lunas", claimId],
     );
 
     return { totalDisetujui, dikoreksi };
@@ -431,10 +449,15 @@ export async function catatPembayaranKlaim(
     if (c.status === "batal") throw new Error("Klaim ini sudah dibatalkan.");
     if (c.status === "lunas") throw new Error("Klaim ini sudah lunas.");
 
-    const disepakati =
-      Number(c.total_disetujui) > 0
-        ? Number(c.total_disetujui)
-        : Number(c.total_diajukan);
+    /*
+     * Setelah diverifikasi, yang disepakati adalah total DISETUJUI — juga
+     * bila nilainya 0 (seluruh baris ditolak). Dulu `> 0` dipakai sebagai
+     * tanda "sudah diverifikasi", sehingga klaim yang ditolak total tetap
+     * menerima pembayaran sampai nilai ajuan penuhnya.
+     */
+    const disepakati = ["disetujui", "lunas"].includes(String(c.status))
+      ? Number(c.total_disetujui)
+      : Number(c.total_diajukan);
 
     const [sudah] = await conn.execute<RowDataPacket[]>(
       `SELECT COALESCE(SUM(jumlah), 0) AS n FROM claim_payments WHERE claim_id = ?`,
@@ -588,7 +611,7 @@ export async function umurPiutang(siteId: number | null): Promise<UmurPiutang[]>
          SELECT c2.id,
                 IFNULL(DATEDIFF(CURDATE(), c2.jatuh_tempo), 0) AS hari,
                 GREATEST(0,
-                  IF(c2.total_disetujui > 0, c2.total_disetujui, c2.total_diajukan)
+                  IF(c2.status IN ('disetujui','lunas'), c2.total_disetujui, c2.total_diajukan)
                   - COALESCE((SELECT SUM(cp.jumlah) FROM claim_payments cp
                                WHERE cp.claim_id = c2.id), 0)
                 ) AS sisa
@@ -633,15 +656,15 @@ export async function ringkasanKlaim(siteId: number | null): Promise<RingkasanKl
        SUM(c.status = 'draft') AS draft,
        SUM(c.status IN ('diajukan','disetujui')) AS diajukan,
        COALESCE(SUM(CASE WHEN c.status IN ('diajukan','disetujui')
-                    THEN IF(c.total_disetujui > 0, c.total_disetujui, c.total_diajukan) END), 0) AS nilai_diajukan,
+                    THEN IF(c.status IN ('disetujui','lunas'), c.total_disetujui, c.total_diajukan) END), 0) AS nilai_diajukan,
        COALESCE(SUM(CASE WHEN c.status IN ('diajukan','disetujui') THEN GREATEST(0,
-                    IF(c.total_disetujui > 0, c.total_disetujui, c.total_diajukan)
+                    IF(c.status IN ('disetujui','lunas'), c.total_disetujui, c.total_diajukan)
                     - COALESCE((SELECT SUM(cp.jumlah) FROM claim_payments cp WHERE cp.claim_id = c.id), 0)
                   ) END), 0) AS piutang,
        SUM(c.status IN ('diajukan','disetujui') AND c.jatuh_tempo < CURDATE()) AS terlambat,
        COALESCE(SUM(CASE WHEN c.status IN ('diajukan','disetujui') AND c.jatuh_tempo < CURDATE()
                     THEN GREATEST(0,
-                      IF(c.total_disetujui > 0, c.total_disetujui, c.total_diajukan)
+                      IF(c.status IN ('disetujui','lunas'), c.total_disetujui, c.total_diajukan)
                       - COALESCE((SELECT SUM(cp.jumlah) FROM claim_payments cp WHERE cp.claim_id = c.id), 0)
                     ) END), 0) AS nilai_terlambat
      FROM claims c
@@ -668,7 +691,7 @@ export async function klaimTerlambat(siteId: number | null) {
     `SELECT c.site_id, s.nama AS site_nama, c.no_klaim, p.nama AS penjamin,
             c.jatuh_tempo, DATEDIFF(CURDATE(), c.jatuh_tempo) AS umur_hari,
             GREATEST(0,
-              IF(c.total_disetujui > 0, c.total_disetujui, c.total_diajukan)
+              IF(c.status IN ('disetujui','lunas'), c.total_disetujui, c.total_diajukan)
               - COALESCE((SELECT SUM(cp.jumlah) FROM claim_payments cp
                            WHERE cp.claim_id = c.id), 0)
             ) AS sisa

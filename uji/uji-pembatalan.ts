@@ -327,7 +327,7 @@ await transaction(async (conn) => {
 await bayar(v2, shift);
 ok("terbayar di dalam shift", (await tagihan(v2)).status === "lunas");
 
-await tutupShift(shift, site, 50000, "tutup untuk uji");
+await tutupShift(shift, site, kasir, 50000, "tutup untuk uji");
 
 const halangan2 = await alasanTakBolehBatal(Number((await tagihan(v2)).id), site);
 ok("halangan shift terbaca di layar", halangan2 !== null && /[Ss]hift/.test(halangan2),

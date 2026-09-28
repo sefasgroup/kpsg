@@ -3,6 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { execute, query, queryOne, transaction, limitAman } from "./db";
 import { batalkanPemotongan, kurangiStok } from "./stock";
 import { kunciStok } from "./kunci";
+import { hargaBarangBerlaku, payerIdKunjungan } from "./penjamin";
 import { kirimNotifikasi, periksaAmbangStok } from "./notifications";
 import { URUT_ANTREAN } from "./visits";
 import {
@@ -420,8 +421,11 @@ export async function simpanPengkajian(
      */
     await kunciStok(conn, siteId, input.bmhp.map((b) => Number(b.item_id)));
 
+    // Harga & nama BMHP dari katalog / kontrak penjamin, bukan formulir.
+    const payerId = await payerIdKunjungan(conn, visitId);
     for (const b of input.bmhp) {
-      const subtotal = b.qty * b.harga_satuan;
+      const katalog = await hargaBarangBerlaku(conn, Number(b.item_id), payerId);
+      const subtotal = b.qty * katalog.harga;
       totalBmhp += subtotal;
 
       const [use] = await conn.execute<ResultSetHeader>(
@@ -431,7 +435,7 @@ export async function simpanPengkajian(
          VALUES (?,?,?,?,?,?,?,?,?)`,
         [
           visitId, assessmentId, siteId, b.item_id, b.qty, b.satuan,
-          b.harga_satuan, subtotal, nurseId,
+          katalog.harga, subtotal, nurseId,
         ],
       );
 
@@ -457,9 +461,9 @@ export async function simpanPengkajian(
 
       barisTagihan.push({
         usageId: use.insertId,
-        nama: b.nama,
+        nama: katalog.nama,
         qty: b.qty,
-        harga: b.harga_satuan,
+        harga: katalog.harga,
       });
     }
 

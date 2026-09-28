@@ -29,12 +29,17 @@ export const METODE_LABEL: Record<(typeof METODE_BAYAR)[number], string> = {
   lainnya: "Lainnya",
 };
 
-/** Metode non-tunai wajib punya nomor referensi untuk rekonsiliasi. */
-const BUTUH_REFERENSI: readonly string[] = [
+/**
+ * Metode non-tunai wajib punya nomor referensi untuk rekonsiliasi.
+ * `lainnya` ikut: tanpa keterangan, tagihan lunas lewat "lainnya" adalah
+ * pendapatan yang hilang tanpa jejak ke mana uangnya masuk.
+ */
+export const BUTUH_REFERENSI: readonly string[] = [
   "qris",
   "transfer",
   "kartu_debit",
   "kartu_kredit",
+  "lainnya",
 ];
 
 export const pembayaranSchema = z

@@ -223,14 +223,22 @@ export async function bukaShift(
 export async function tutupShift(
   shiftId: number,
   siteId: number,
+  /** Kasir yang menutup — hanya boleh menutup shift MILIKNYA sendiri. */
+  cashierId: number,
   kasFisik: number,
   catatan?: string | null,
 ): Promise<{ kasSistem: number; selisih: number }> {
   return transaction(async (conn) => {
+    /*
+     * `cashier_id` ikut disaring: id shift datang dari klien, dan tanpa
+     * saringan ini kasir mana pun di cabang bisa menutup shift rekannya
+     * dengan angka kas fisik karangan — selisihnya tercatat atas nama orang
+     * lain, dan pembayaran berikutnya diam-diam membuka shift baru kas 0.
+     */
     const [rows] = await conn.execute<RowDataPacket[]>(
       `SELECT id, kas_awal, ditutup_at FROM cashier_shifts
-        WHERE id = ? AND site_id = ? FOR UPDATE`,
-      [shiftId, siteId],
+        WHERE id = ? AND site_id = ? AND cashier_id = ? FOR UPDATE`,
+      [shiftId, siteId, cashierId],
     );
     const shift = rows[0];
     if (!shift) throw new Error("Shift tidak ditemukan.");
@@ -353,6 +361,24 @@ export async function prosesPembayaran(
       );
     }
 
+    /*
+     * Shift dibaca ULANG dengan kunci di dalam transaksi ini. Pemanggil
+     * mengambil shift aktif di luar transaksi; bila shift itu ditutup dari
+     * tab lain di sela-selanya, pembayaran tunai akan menempel ke shift
+     * yang kasnya sudah dihitung — hilang dari laporan penutupan dan tidak
+     * bisa dibatalkan lagi.
+     */
+    if (shiftId !== null) {
+      const [sh] = await conn.execute<RowDataPacket[]>(
+        `SELECT ditutup_at FROM cashier_shifts
+          WHERE id = ? AND site_id = ? AND cashier_id = ? FOR UPDATE`,
+        [shiftId, siteId, cashierId],
+      );
+      if (!sh[0] || sh[0].ditutup_at) {
+        throw new Error("Shift kasir baru saja ditutup. Muat ulang halaman lalu ulangi pembayaran.");
+      }
+    }
+
     // Subtotal dari sumbernya, bukan dari layar.
     const [rincian] = await conn.execute<RowDataPacket[]>(
       `SELECT COALESCE(SUM(subtotal),0) AS n FROM billing_items WHERE billing_id = ?`,
@@ -398,6 +424,19 @@ export async function prosesPembayaran(
       throw new Error(
         `Pasien masih menanggung ${tanggungPasien} (di atas plafon ${bt.payer_nama ?? "penjamin"}). ` +
           "Pilih metode pembayaran untuk bagian pasien.",
+      );
+    }
+
+    /*
+     * "BPJS" sebagai cara bayar bagian PASIEN berarti tidak ada uang yang
+     * masuk dan tidak ada klaim yang bisa dibuat (tagihannya tanpa
+     * penjamin) — pendapatannya lenyap. Pasien BPJS didaftarkan dengan
+     * penjamin BPJS, sehingga bagiannya otomatis tertanggung.
+     */
+    if (tanggungPasien > 0 && metode === "bpjs") {
+      throw new Error(
+        "Bagian pasien tidak bisa dibayar dengan BPJS. Daftarkan kunjungan dengan penjamin BPJS, " +
+          "atau pilih metode pembayaran lain.",
       );
     }
 
@@ -493,11 +532,14 @@ export async function alasanTakBolehBatal(
 ): Promise<string | null> {
   const row = await queryOne<RowDataPacket & {
     status: string; ditutup_at: string | null; no_resep_diserahkan: string | null;
+    no_klaim: string | null;
   }>(
     `SELECT bt.status, cs.ditutup_at,
             (SELECT rx.no_resep FROM prescriptions rx
               WHERE rx.visit_id = bt.visit_id AND rx.status = 'diserahkan'
-              LIMIT 1) AS no_resep_diserahkan
+              LIMIT 1) AS no_resep_diserahkan,
+            (SELECT c.no_klaim FROM claim_items ci JOIN claims c ON c.id = ci.claim_id
+              WHERE ci.billing_aktif = bt.id LIMIT 1) AS no_klaim
        FROM billing_transactions bt
        LEFT JOIN cashier_shifts cs ON cs.id = bt.shift_id
       WHERE bt.id = ? AND (? IS NULL OR bt.site_id = ?)`,
@@ -510,6 +552,9 @@ export async function alasanTakBolehBatal(
   }
   if (row.ditutup_at) {
     return "Shift kasir yang memproses pembayaran ini sudah ditutup dan kasnya sudah dihitung.";
+  }
+  if (row.no_klaim) {
+    return `Tagihan ini sedang diklaim di ${row.no_klaim} — batalkan atau keluarkan dari klaim lebih dulu.`;
   }
   return null;
 }
@@ -576,6 +621,24 @@ export async function batalkanPembayaran(
         WHERE visit_id = ? AND status = 'diserahkan' LIMIT 1`,
       [bt.visit_id],
     );
+    /*
+     * Tagihan yang sedang diklaim ke penjamin tidak boleh dibuka lagi: klaim
+     * membawa nilai yang diajukan dari tagihan ini, dan membayarnya ulang
+     * (mis. dengan diskon lain) membuat klaim berselisih dengan tagihannya —
+     * atau berakhir mengklaim tagihan yang kunjungannya dibatalkan.
+     */
+    const [diklaim] = await conn.execute<RowDataPacket[]>(
+      `SELECT c.no_klaim FROM claim_items ci JOIN claims c ON c.id = ci.claim_id
+        WHERE ci.billing_aktif = ? LIMIT 1`,
+      [billingId],
+    );
+    if (diklaim[0]) {
+      throw new Error(
+        `Tagihan ini sedang diklaim di ${String(diklaim[0].no_klaim)}. ` +
+        "Batalkan klaimnya lebih dulu sebelum membatalkan pembayaran.",
+      );
+    }
+
     if (diserahkan[0]) {
       throw new Error(
         `Obat resep ${String(diserahkan[0].no_resep)} sudah diserahkan ke pasien. ` +

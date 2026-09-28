@@ -169,7 +169,12 @@ export async function metodeBayar(
   sampai: string,
 ): Promise<MetodeBayar[]> {
   return query<MetodeBayar>(
-    `SELECT bt.payment_method, COUNT(*) AS jumlah, COALESCE(SUM(bt.total), 0) AS nilai
+    /* Uang yang benar-benar DITERIMA dari pasien (`dibayar - kembalian`),
+       bukan nilai tagihan — sama dengan rekap tutup kasir (cashier.ts).
+       `SUM(total)` ikut menghitung bagian yang ditanggung penjamin, sehingga
+       laporan ini tidak pernah cocok dengan kas shift. */
+    `SELECT bt.payment_method, COUNT(*) AS jumlah,
+            COALESCE(SUM(bt.dibayar - bt.kembalian), 0) AS nilai
        FROM billing_transactions bt
        JOIN visits v ON v.id = bt.visit_id
       WHERE bt.site_id = ? AND bt.status = 'lunas' AND v.tanggal BETWEEN ? AND ?

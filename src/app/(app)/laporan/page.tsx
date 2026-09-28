@@ -13,16 +13,15 @@ import {
 } from "@/lib/laporan";
 import { KATEGORI_LABEL } from "@/lib/billing-labels";
 import { formatAngka, formatRupiah, formatTanggalPendek } from "@/lib/format";
+import { METODE_LABEL as METODE_LABEL_KASIR } from "@/lib/validations/cashier";
 import { tanggalHariIni, tanggalValid, tambahHari } from "@/lib/tanggal";
 
 export const metadata: Metadata = { title: "Laporan Cabang" };
 export const dynamic = "force-dynamic";
 
-const METODE_LABEL: Record<string, string> = {
-  tunai: "Tunai", qris: "QRIS", transfer: "Transfer",
-  kartu_debit: "Kartu Debit", kartu_kredit: "Kartu Kredit",
-  bpjs: "BPJS", lainnya: "Lainnya",
-};
+// Satu sumber label dengan layar kasir — termasuk "penjamin", yang dulu
+// tertinggal di sini sehingga kuncinya tampil mentah.
+const METODE_LABEL: Record<string, string> = METODE_LABEL_KASIR;
 
 export default async function LaporanPage({
   searchParams,

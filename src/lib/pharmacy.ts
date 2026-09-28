@@ -5,6 +5,7 @@ import { StokTidakCukupError, kurangiStok, lepasReservasi, reservasiStok } from 
 import { itemResep, kunciKunjungan, kunciStok, visitIdDariResep } from "./kunci";
 import { kirimNotifikasi, periksaAmbangStok } from "./notifications";
 import { formatDesimal } from "./format";
+import { hargaBarangBerlaku, payerIdKunjungan } from "./penjamin";
 import {
   hapusBarisTagihanByRef,
   hitungUlangTagihan,
@@ -653,6 +654,13 @@ export async function validasiResep(
     let totalRacikan = 0;
     let totalJasaRacik = 0;
 
+    /*
+     * KUNCI HARGA (§3.1): harga dihitung ulang dari katalog / kontrak
+     * penjamin saat ini dan ditulis kembali ke baris resep — nilai yang
+     * tersimpan saat dokter menulis resep tidak dipercaya begitu saja.
+     */
+    const payerId = await payerIdKunjungan(conn, visitId);
+
     // ---------- Obat paten ----------
     const [paten] = await conn.execute<RowDataPacket[]>(
       `SELECT pi.id, pi.item_id, pi.qty, pi.harga_satuan, i.nama
@@ -664,7 +672,11 @@ export async function validasiResep(
 
     for (const p of paten) {
       const qty = Number(p.qty);
-      const harga = Number(p.harga_satuan);
+      const { harga } = await hargaBarangBerlaku(conn, Number(p.item_id), payerId);
+      await conn.execute(
+        `UPDATE prescription_items SET harga_satuan = ?, subtotal = ? WHERE id = ?`,
+        [harga, qty * harga, p.id],
+      );
 
       await reservasiStok(conn, { siteId, itemId: Number(p.item_id), qty });
 
@@ -705,7 +717,12 @@ export async function validasiResep(
         // Bahan mentah dikunci dari gudang yang sama dengan obat jadi —
         // tablet yang digerus tetap keluar dari saldo tablet itu.
         await reservasiStok(conn, { siteId, itemId: Number(b.item_id), qty });
-        nilaiBahan += qty * Number(b.harga_satuan);
+        const { harga } = await hargaBarangBerlaku(conn, Number(b.item_id), payerId);
+        await conn.execute(
+          `UPDATE prescription_racikan_ingredients SET harga_satuan = ?, subtotal = ? WHERE id = ?`,
+          [harga, qty * harga, b.id],
+        );
+        nilaiBahan += qty * harga;
       }
 
       // Nilai bahan jadi satu baris tagihan atas nama racikannya — pasien

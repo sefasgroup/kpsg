@@ -127,6 +127,7 @@ export async function tutupShiftAction(
     const hasil = await tutupShift(
       shiftId,
       siteId,
+      session.id,
       parsed.data.kas_akhir_fisik,
       parsed.data.catatan,
     );

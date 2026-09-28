@@ -211,6 +211,48 @@ export async function tarifTindakanBerlaku(
   return global[0] ? Number(global[0].tarif) : null;
 }
 
+/**
+ * Harga satu barang (obat / BMHP / bahan racikan) untuk penagihan:
+ *
+ *   1. tarif kontrak penjamin  (`payer_tariffs.item_id`)
+ *   2. harga jual katalog      (`items.harga_jual`)
+ *
+ * SELALU dari database, tidak pernah dari kiriman formulir (CLAUDE.md §4).
+ * Sebelumnya harga resep, bahan racikan, dan BMHP diterima apa adanya dari
+ * layar — permintaan dengan `harga_satuan: 0` menghasilkan obat gratis,
+ * dan tarif kontrak barang yang sudah diisi di master penjamin tidak pernah
+ * dipakai sehingga klaim tertagih harga umum.
+ */
+export async function hargaBarangBerlaku(
+  conn: PoolConnection,
+  itemId: number,
+  payerId: number | null,
+): Promise<{ nama: string; harga: number }> {
+  const [rows] = await conn.execute<RowDataPacket[]>(
+    `SELECT i.nama,
+            COALESCE(
+              (SELECT t.harga FROM payer_tariffs t WHERE t.payer_id = ? AND t.item_id = i.id),
+              i.harga_jual
+            ) AS harga
+       FROM items i WHERE i.id = ?`,
+    [payerId, itemId],
+  );
+  if (!rows[0]) throw new Error("Barang tidak ditemukan di katalog.");
+  return { nama: String(rows[0].nama), harga: Number(rows[0].harga) };
+}
+
+/** Id penjamin kunjungan (dalam transaksi) — dasar pemilihan tarif kontrak. */
+export async function payerIdKunjungan(
+  conn: PoolConnection,
+  visitId: number,
+): Promise<number | null> {
+  const [rows] = await conn.execute<RowDataPacket[]>(
+    `SELECT payer_id FROM visits WHERE id = ?`,
+    [visitId],
+  );
+  return rows[0]?.payer_id ? Number(rows[0].payer_id) : null;
+}
+
 /** Versi tanpa transaksi, untuk layar yang hanya menampilkan harga. */
 export async function tarifTindakanUntukPenjamin(
   procedureId: number,

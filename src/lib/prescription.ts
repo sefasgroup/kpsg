@@ -3,6 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { nextSequence, query, queryOne, transaction, limitAman } from "./db";
 import { hapusBarisTagihanByRef, hitungUlangTagihan, pastikanTagihan } from "./billing";
 import { lepasReservasiResep } from "./pharmacy";
+import { hargaBarangBerlaku, payerIdKunjungan } from "./penjamin";
 import type { ResepInput } from "./validations/doctor";
 import { periodeSekarang } from "./tanggal";
 
@@ -226,8 +227,13 @@ export async function simpanResep(
     }
 
     // --- Obat paten ----------------------------------------------------
+    // Harga dari katalog / kontrak penjamin, bukan dari formulir. Farmasi
+    // menghitungnya ulang lagi saat validasi (kunci harga, §3.1).
+    const payerId = await payerIdKunjungan(conn, visitId);
+
     let urutan = 0;
     for (const it of input.items) {
+      const { harga } = await hargaBarangBerlaku(conn, it.item_id, payerId);
       await conn.execute(
         `INSERT INTO prescription_items
            (prescription_id, item_id, qty, satuan, aturan_pakai, catatan,
@@ -236,7 +242,7 @@ export async function simpanResep(
         [
           prescriptionId, it.item_id, it.qty, it.satuan,
           it.aturan_pakai, it.catatan ?? null,
-          it.harga_satuan, it.qty * it.harga_satuan, urutan++,
+          harga, it.qty * harga, urutan++,
         ],
       );
     }
@@ -257,13 +263,14 @@ export async function simpanResep(
       );
 
       for (const b of r.ingredients) {
+        const { harga } = await hargaBarangBerlaku(conn, b.item_id, payerId);
         await conn.execute(
           `INSERT INTO prescription_racikan_ingredients
              (racikan_id, item_id, qty_bahan, satuan, harga_satuan, subtotal)
            VALUES (?,?,?,?,?,?)`,
           [
             rc.insertId, b.item_id, b.qty_bahan, b.satuan,
-            b.harga_satuan, b.qty_bahan * b.harga_satuan,
+            harga, b.qty_bahan * harga,
           ],
         );
       }

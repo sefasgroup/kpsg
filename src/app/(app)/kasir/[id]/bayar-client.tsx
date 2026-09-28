@@ -12,11 +12,12 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { formatDesimal, formatRupiah } from "@/lib/format";
 import { KATEGORI_LABEL } from "@/lib/billing-labels";
-import { METODE_BAYAR, METODE_LABEL } from "@/lib/validations/cashier";
+import { BUTUH_REFERENSI, METODE_BAYAR, METODE_LABEL } from "@/lib/validations/cashier";
 import { batalkanPembayaranAction, bayarAction } from "../actions";
 import { Struk, type BarisStruk } from "./struk";
 
-const BUTUH_REF = ["qris", "transfer", "kartu_debit", "kartu_kredit"];
+// Sumber yang sama dengan validasi server.
+const BUTUH_REF = BUTUH_REFERENSI;
 const PECAHAN = [5000, 10000, 20000, 50000, 100000];
 
 export function BayarClient({
@@ -397,9 +398,13 @@ export function BayarClient({
 
               {BUTUH_REF.includes(metode) ? (
                 <Field
-                  label="No. Referensi / Approval"
+                  label={metode === "lainnya" ? "Keterangan / No. Referensi" : "No. Referensi / Approval"}
                   required
-                  hint="Dibutuhkan untuk rekonsiliasi dengan mutasi bank"
+                  hint={
+                    metode === "lainnya"
+                      ? "Wajib — ke mana pembayaran ini masuk"
+                      : "Dibutuhkan untuk rekonsiliasi dengan mutasi bank"
+                  }
                 >
                   <Input
                     value={ref}

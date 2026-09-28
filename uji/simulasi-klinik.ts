@@ -646,7 +646,7 @@ cek("insiden risiko tinggi bisa ditutup setelah RCA diisi",
 babak("15.00 — KASIR MENUTUP SHIFT");
 // =====================================================================
 const kasSeharusnya = andi.pasien + bunga.pasien + cahyo.pasien + ringkasBayar[3].pasien;
-const tutup = await tutupShift(shift, site, 500000 + kasSeharusnya);
+const tutup = await tutupShift(shift, site, kasir, 500000 + kasSeharusnya);
 console.log(
   `  Kas awal ${formatRupiah(500000)} + tunai ${formatRupiah(kasSeharusnya)}` +
   ` = ${formatRupiah(500000 + kasSeharusnya)}`,
