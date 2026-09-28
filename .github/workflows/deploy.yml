@@ -1,0 +1,28 @@
+name: Deploy Next.js to VPS
+
+on:
+  push:
+    branches:
+      - main # Workflow akan aktif setiap kali ada push ke branch main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Execute Remote Deploy Commands via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SSH_HOST }}
+          username: ${{ secrets.SSH_USERNAME }}
+          key: ${{ secrets.SSH_KEY }}
+          port: ${{ secrets.SSH_PORT }}
+          script: |
+            cd /var/www/kpsg
+            git pull origin main
+            npm ci
+            npm run build
+            pm2 restart kpsg-app
