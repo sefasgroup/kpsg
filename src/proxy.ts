@@ -12,15 +12,6 @@ import { canAccess } from "@/lib/rbac";
 
 const PUBLIC = ["/login", "/api/auth/login"];
 
-/**
- * Redirect dengan Location relatif. `new URL(path, request.url)` memakai host
- * yang dilihat server — di balik reverse proxy itu localhost:3000, bukan
- * domain publik — sehingga pengguna dilempar ke alamat yang tak terjangkau.
- */
-function redirectRelatif(path: string) {
-  return new NextResponse(null, { status: 307, headers: { Location: path } });
-}
-
 export default async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
@@ -32,13 +23,13 @@ export default async function proxy(request: NextRequest) {
   const session = token ? await verifySession(token) : null;
 
   if (!session) {
-    const tujuan =
-      pathname === "/" ? "/login" : `/login?next=${encodeURIComponent(pathname)}`;
-    return redirectRelatif(tujuan);
+    const url = new URL("/login", request.url);
+    if (pathname !== "/") url.searchParams.set("next", pathname);
+    return NextResponse.redirect(url);
   }
 
   if (!canAccess(session.role, pathname)) {
-    return redirectRelatif("/dashboard");
+    return NextResponse.redirect(new URL("/dashboard", request.url));
   }
 
   return NextResponse.next();
