@@ -161,18 +161,6 @@ export async function tambahPengecualian(
       throw new Error("Dokter ini tidak bertugas di cabang Anda.");
     }
 
-    const [dobel] = await conn.execute<RowDataPacket[]>(
-      `SELECT id FROM schedule_exceptions
-        WHERE site_id = ? AND doctor_id = ? AND tanggal = ? AND status <> 'ditolak'
-        LIMIT 1`,
-      [siteId, input.doctor_id, input.tanggal],
-    );
-    if (dobel[0]) {
-      throw new Error(
-        "Sudah ada pengecualian untuk dokter ini pada tanggal tersebut.",
-      );
-    }
-
     // Dokter pengganti harus benar-benar berperan sebagai dokter di cabang ini.
     if (input.substitute_doctor_id !== null) {
       const [sub] = await conn.execute<RowDataPacket[]>(
@@ -186,19 +174,55 @@ export async function tambahPengecualian(
         throw new Error("Dokter pengganti tidak valid untuk cabang ini.");
       }
 
-      // Pengganti sendiri tidak boleh sedang berhalangan di tanggal itu.
+      // Pengganti sendiri tidak boleh sedang berhalangan di tanggal itu —
+      // di cabang MANA PUN: dokter bisa bertugas di beberapa cabang, dan
+      // cutinya tercatat di cabang tempat ia mengajukannya.
       const [subHalangan] = await conn.execute<RowDataPacket[]>(
         `SELECT id FROM schedule_exceptions
-          WHERE site_id = ? AND doctor_id = ? AND tanggal = ?
+          WHERE doctor_id = ? AND tanggal = ?
             AND jenis IN ('libur','cuti','izin','sakit') AND status = 'disetujui'
           LIMIT 1`,
-        [siteId, input.substitute_doctor_id, input.tanggal],
+        [input.substitute_doctor_id, input.tanggal],
       );
       if (subHalangan[0]) {
         throw new Error(
           "Dokter pengganti juga berhalangan pada tanggal tersebut.",
         );
       }
+    }
+
+    const [dobel] = await conn.execute<RowDataPacket[]>(
+      `SELECT id, jenis, substitute_doctor_id FROM schedule_exceptions
+        WHERE site_id = ? AND doctor_id = ? AND tanggal = ? AND status <> 'ditolak'
+        LIMIT 1 FOR UPDATE`,
+      [siteId, input.doctor_id, input.tanggal],
+    );
+    if (dobel[0]) {
+      /*
+       * Menetapkan pengganti untuk hari yang SUDAH tercatat berhalangan —
+       * kasus paling umum: cuti disetujui (putuskanCuti membuat baris per
+       * hari tanpa pengganti), lalu admin mencarikan penggantinya. Baris
+       * itu dilengkapi, bukan ditolak; tanpa ini pasien dokter tersebut
+       * tidak bisa didaftarkan sepanjang masa cutinya.
+       */
+      const halangan = ["libur", "cuti", "izin", "sakit"];
+      if (
+        input.substitute_doctor_id !== null &&
+        halangan.includes(input.jenis) &&
+        halangan.includes(String(dobel[0].jenis)) &&
+        dobel[0].substitute_doctor_id === null
+      ) {
+        await conn.execute(
+          `UPDATE schedule_exceptions SET substitute_doctor_id = ? WHERE id = ?`,
+          [input.substitute_doctor_id, dobel[0].id],
+        );
+        return Number(dobel[0].id);
+      }
+      throw new Error(
+        dobel[0].substitute_doctor_id === null
+          ? "Sudah ada pengecualian untuk dokter ini pada tanggal tersebut."
+          : "Dokter ini sudah punya pengganti pada tanggal tersebut.",
+      );
     }
 
     const [res] = await conn.execute<ResultSetHeader>(

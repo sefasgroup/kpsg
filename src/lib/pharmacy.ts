@@ -81,8 +81,12 @@ const SELECT_RESEP = `
 /** Resep yang menunggu disiapkan / diserahkan. */
 export async function resepMasuk(siteId: number | null): Promise<ResepMasuk[]> {
   return query<ResepMasuk>(
+    /* Resep `baru` baru sampai di farmasi setelah dokter menekan Finalkan
+       Asesmen (kunjungan `menunggu_farmasi`). Sebelum itu ia masih draft
+       dokter — asesmen, diagnosa, dan tindakannya belum lengkap. */
     `${SELECT_RESEP}
-      WHERE rx.status IN ('baru','diterima_farmasi','disiapkan')
+      WHERE (rx.status IN ('diterima_farmasi','disiapkan')
+             OR (rx.status = 'baru' AND v.status = 'menunggu_farmasi'))
         AND (? IS NULL OR rx.site_id = ?)
       ORDER BY rx.created_at`,
     [siteId, siteId],
@@ -210,6 +214,25 @@ export async function racikanResep(prescriptionId: number): Promise<BarisRacikan
 }
 
 /**
+ * Resep hanya boleh diterima/divalidasi saat kunjungan ada di tahap farmasi,
+ * yaitu setelah dokter menekan Finalkan Asesmen (§3.1: tombol kirim ke
+ * farmasi ADALAH Finalkan Asesmen). Tanpa penjaga ini farmasi bisa
+ * memproses resep yang masih draft — pasien lalu dilempar ke kasir sebelum
+ * diagnosa dan tindakannya tercatat, dan dokter terkunci dari kunjungannya.
+ * Hal yang sama berlaku saat hasil lab DITUNGGU mengembalikan kunjungan ke
+ * dokter: hasilnya wajib dinilai dokter dulu.
+ */
+function pastikanDiTahapFarmasi(statusKunjungan: string): void {
+  if (statusKunjungan === "menunggu_farmasi") return;
+  throw new Error(
+    ["terdaftar", "menunggu_perawat", "menunggu_dokter", "dalam_pemeriksaan", "menunggu_lab"]
+      .includes(statusKunjungan)
+      ? "Resep belum dikirim dokter — tunggu sampai dokter menekan Finalkan Asesmen."
+      : "Kunjungan ini tidak sedang di tahap farmasi.",
+  );
+}
+
+/**
  * Farmasi menerima resep. Sejak titik ini dokter tidak bisa mengubahnya —
  * obat mungkin sudah mulai disiapkan.
  */
@@ -219,14 +242,23 @@ export async function terimaResep(
   userId: number,
 ): Promise<void> {
   await transaction(async (conn) => {
+    // Kunjungan dikunci lebih dulu — urutan yang sama dengan simpanResep()
+    // dan validasiResep() (lib/kunci.ts), sehingga dokter tidak bisa
+    // menulis ulang resep di sela pemeriksaan status di bawah.
+    const kunjunganId = await visitIdDariResep(conn, prescriptionId);
+    if (kunjunganId) await kunciKunjungan(conn, kunjunganId);
+
     const [rows] = await conn.execute<RowDataPacket[]>(
-      `SELECT id, status FROM prescriptions WHERE id = ? AND site_id = ? FOR UPDATE`,
+      `SELECT rx.id, rx.status, v.status AS visit_status
+         FROM prescriptions rx JOIN visits v ON v.id = rx.visit_id
+        WHERE rx.id = ? AND rx.site_id = ? FOR UPDATE`,
       [prescriptionId, siteId],
     );
     if (!rows[0]) throw new Error("Resep tidak ditemukan.");
     if (rows[0].status !== "baru") {
       throw new Error("Resep ini sudah diterima sebelumnya.");
     }
+    pastikanDiTahapFarmasi(String(rows[0].visit_status));
     await conn.execute(
       `UPDATE prescriptions
           SET status = 'diterima_farmasi', received_by = ?, received_at = NOW()
@@ -593,6 +625,14 @@ export async function validasiResep(
         "Tunggu sampai dokter memfinalkan asesmennya.",
       );
     }
+
+    // Sesudah pemeriksaan lab di atas: pesan "menunggu hasil LAB-…" lebih
+    // berguna bagi apoteker daripada pesan tahap yang umum.
+    const [vRows] = await conn.execute<RowDataPacket[]>(
+      `SELECT status FROM visits WHERE id = ?`,
+      [visitId],
+    );
+    pastikanDiTahapFarmasi(String(vRows[0]?.status ?? ""));
     const billingId = await pastikanTagihan(conn, visitId, siteId);
 
     /*
@@ -715,8 +755,13 @@ export async function validasiResep(
      * Menagih sekarang berarti pasien membayar, lalu hasil lab masuk dan
      * tagihannya berubah setelah struk tercetak.
      */
+    /* Hanya order DITUNGGU yang menahan pasien — sama dengan doctor.ts dan
+       lab.ts:statusSetelahLab. Order `menyusul` (mis. kultur 5 hari, APS)
+       tidak boleh membuat pasien tidak bisa membayar dan mengambil obat. */
     const [labAktif] = await conn.execute<RowDataPacket[]>(
-      `SELECT 1 FROM lab_orders WHERE visit_id = ? AND status IN ('baru','diproses') LIMIT 1`,
+      `SELECT 1 FROM lab_orders
+        WHERE visit_id = ? AND status IN ('baru','diproses')
+          AND sifat_hasil = 'ditunggu' LIMIT 1`,
       [visitId],
     );
     const keKasir = labAktif.length === 0;

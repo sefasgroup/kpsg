@@ -11,3 +11,8 @@ next-env.d.ts
 npm-debug.log*
 storage/*
 !storage/.gitignore
+
+# Build deploy bergantian (lihat .github/workflows/deploy.yml)
+.next-a/
+.next-b/
+.dist-aktif

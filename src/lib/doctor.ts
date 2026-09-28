@@ -2,6 +2,7 @@ import "server-only";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { query, queryOne, transaction, limitAman } from "./db";
 import { tarifTindakanBerlaku } from "./penjamin";
+import { kirimNotifikasi } from "./notifications";
 import {
   hapusBarisTagihanByRef,
   hitungUlangTagihan,
@@ -729,8 +730,21 @@ export async function simpanAsesmen(
             AND sifat_hasil = 'ditunggu' LIMIT 1`,
         [visitId],
       );
+      /*
+       * Hanya resep yang masih butuh kerja farmasi. Resep `disiapkan` sudah
+       * divalidasi dan dihargai — yang tersisa tinggal pembayaran. Mengirim
+       * pasien ke farmasi dalam keadaan itu membuatnya terjebak: farmasi tak
+       * punya pekerjaan, kasir tak melihatnya (sama dengan statusSetelahLab).
+       */
       const [adaResep] = await conn.execute<RowDataPacket[]>(
-        `SELECT 1 FROM prescriptions WHERE visit_id = ? AND status <> 'batal' LIMIT 1`,
+        `SELECT rx.id, rx.no_resep, p.nama,
+                (SELECT COUNT(*) FROM prescription_items pi WHERE pi.prescription_id = rx.id) AS paten,
+                (SELECT COUNT(*) FROM prescription_racikans pr WHERE pr.prescription_id = rx.id) AS racikan
+           FROM prescriptions rx
+           JOIN visits v   ON v.id = rx.visit_id
+           JOIN patients p ON p.id = v.patient_id
+          WHERE rx.visit_id = ? AND rx.status IN ('baru','diterima_farmasi')
+          LIMIT 1`,
         [visitId],
       );
 
@@ -745,6 +759,31 @@ export async function simpanAsesmen(
         statusBerikut,
         visitId,
       ]);
+
+      /*
+       * Finalkan Asesmen ADALAH tombol kirim ke farmasi (§3.1), jadi di
+       * sinilah farmasi diberi tahu — juga setiap kali resep direvisi dan
+       * difinalkan ulang setelah "Kembalikan ke Dokter". Ditujukan ke PERAN
+       * supaya apoteker mana pun yang bertugas bisa mengambilnya, dan ikut
+       * transaksi ini sehingga batal bersama finalisasinya.
+       */
+      if (statusBerikut === "menunggu_farmasi") {
+        const rx = adaResep[0];
+        const racikan = Number(rx.racikan);
+        await kirimNotifikasi(
+          { roleCode: "farmasi", siteId },
+          {
+            jenis: "resep_masuk",
+            judul: `Resep baru — ${String(rx.nama ?? "Pasien")}`,
+            pesan:
+              `${String(rx.no_resep)} · ${Number(rx.paten) + racikan} item` +
+              (racikan > 0 ? ` (termasuk ${racikan} racikan)` : ""),
+            link: `/farmasi/${Number(rx.id)}`,
+            siteId,
+          },
+          conn,
+        );
+      }
 
       /*
        * Kunjungan yang langsung ke kasir — tanpa lab dan tanpa resep — tidak

@@ -37,6 +37,26 @@ import { pembayaranSchema } from "../src/lib/validations/cashier";
 import { orderLabSchema } from "../src/lib/validations/lab";
 import { tanggalHariIni } from "../src/lib/tanggal";
 
+/*
+ * Resep hanya bisa ditulis selama kunjungan di tahap dokter (lib/prescription.ts).
+ * Uji ini menyiapkan kunjungannya langsung di tahap farmasi/kasir, jadi urutan
+ * nyatanya disimulasikan: kembali sebentar ke tahap dokter, tulis resep, lalu
+ * kembali ke status semula — seperti dokter menulis resep lalu menekan
+ * Finalkan Asesmen.
+ */
+async function simpanResepUji(...args: Parameters<typeof simpanResep>) {
+  const [visitId] = args;
+  const lama = (await queryOne<RowDataPacket & { status: string }>(
+    `SELECT status FROM visits WHERE id = ?`, [visitId]))!.status;
+  await execute(`UPDATE visits SET status = 'dalam_pemeriksaan' WHERE id = ?`, [visitId]);
+  try {
+    return await simpanResep(...args);
+  } finally {
+    await execute(`UPDATE visits SET status = ? WHERE id = ?`, [lama, visitId]);
+  }
+}
+
+
 let gagal = 0;
 const ok = (nama: string, lulus: boolean, detail = "") => {
   console.log(`  ${lulus ? "PASS" : "GAGAL"}  ${nama}${detail ? " — " + detail : ""}`);
@@ -263,7 +283,7 @@ ok("setelah order dibuat, petugas lab dapat tautan order",
 
 // --- resep dikirim → farmasi dapat tautannya ---
 const b = await buatKunjungan({ status: "menunggu_farmasi" });
-const rx = await simpanResep(b.visitId, site, dokter, resep);
+const rx = await simpanResepUji(b.visitId, site, dokter, resep);
 
 ok("resep terkirim → farmasi dapat tautan resep",
   (await ambil("Zulkarnaen", "farmasi", b.nik))?.link === `/farmasi/${rx.prescriptionId}`,

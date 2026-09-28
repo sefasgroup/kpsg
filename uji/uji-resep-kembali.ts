@@ -28,6 +28,26 @@ import { resepSchema } from "../src/lib/validations/doctor";
 import { pembayaranSchema } from "../src/lib/validations/cashier";
 import { tanggalHariIni } from "../src/lib/tanggal";
 
+/*
+ * Resep hanya bisa ditulis selama kunjungan di tahap dokter (lib/prescription.ts).
+ * Uji ini menyiapkan kunjungannya langsung di tahap farmasi/kasir, jadi urutan
+ * nyatanya disimulasikan: kembali sebentar ke tahap dokter, tulis resep, lalu
+ * kembali ke status semula — seperti dokter menulis resep lalu menekan
+ * Finalkan Asesmen.
+ */
+async function simpanResepUji(...args: Parameters<typeof simpanResep>) {
+  const [visitId] = args;
+  const lama = (await queryOne<RowDataPacket & { status: string }>(
+    `SELECT status FROM visits WHERE id = ?`, [visitId]))!.status;
+  await execute(`UPDATE visits SET status = 'dalam_pemeriksaan' WHERE id = ?`, [visitId]);
+  try {
+    return await simpanResep(...args);
+  } finally {
+    await execute(`UPDATE visits SET status = ? WHERE id = ?`, [lama, visitId]);
+  }
+}
+
+
 let gagal = 0;
 const ok = (nama: string, lulus: boolean, detail = "") => {
   console.log(`  ${lulus ? "PASS" : "GAGAL"}  ${nama}${detail ? " — " + detail : ""}`);
@@ -158,7 +178,7 @@ const jumlahPergerakan = async () =>
 console.log("\n== 1. Klaim lalu dikembalikan ==");
 
 const v1 = await buatVisit(`${TANDA}/V/1`);
-const rx1 = await simpanResep(v1, site, dokter, resepBaru(10));
+const rx1 = await simpanResepUji(v1, site, dokter, resepBaru(10));
 
 await terimaResep(rx1.prescriptionId, site, apoteker);
 const sesudahKlaim = await statusResep(rx1.prescriptionId);
@@ -198,7 +218,7 @@ console.log("\n== 2. Dokter bisa merevisi sesudah dikembalikan ==");
 
 let revisiGagal = "";
 try {
-  await simpanResep(v1, site, dokter, resepBaru(5));
+  await simpanResepUji(v1, site, dokter, resepBaru(5));
 } catch (e) {
   revisiGagal = (e as Error).message;
 }
@@ -257,7 +277,7 @@ ok("resep yang belum diklaim ditolak", tolakBaru !== "", tolakBaru);
  * yang ingin dibuktikan adalah keadaan SESUDAH obat benar-benar keluar.
  */
 const v2 = await buatVisit(`${TANDA}/V/2`);
-const rx2 = await simpanResep(v2, site, dokter, resepBaru(3));
+const rx2 = await simpanResepUji(v2, site, dokter, resepBaru(3));
 await terimaResep(rx2.prescriptionId, site, apoteker);
 await validasiResep(rx2.prescriptionId, site, apoteker);
 
@@ -295,7 +315,7 @@ const siteLain = (await execute(
   `INSERT INTO sites (kode, nama) VALUES ('${TANDA}-B', 'Cabang Lain')`,
 )).insertId;
 const v3 = await buatVisit(`${TANDA}/V/3`);
-const rx3 = await simpanResep(v3, site, dokter, resepBaru(2));
+const rx3 = await simpanResepUji(v3, site, dokter, resepBaru(2));
 await terimaResep(rx3.prescriptionId, site, apoteker);
 
 let tolakCabang = "";
@@ -320,9 +340,11 @@ console.log("\n== 5. Kunjungan yang masih menunggu lab ==");
  * belum selesai.
  */
 const v4 = await buatVisit(`${TANDA}/V/4`);
-await execute(`UPDATE visits SET status = 'menunggu_lab' WHERE id = ?`, [v4]);
-const rx4 = await simpanResep(v4, site, dokter, resepBaru(1));
+const rx4 = await simpanResepUji(v4, site, dokter, resepBaru(1));
+// Farmasi hanya menerima resep di tahap farmasi; kunjungannya baru pindah
+// ke lab SESUDAHNYA (mis. order diubah menjadi "ditunggu").
 await terimaResep(rx4.prescriptionId, site, apoteker);
+await execute(`UPDATE visits SET status = 'menunggu_lab' WHERE id = ?`, [v4]);
 await batalkanTerimaResep(rx4.prescriptionId, site, "apt", "Perlu revisi dosis dulu");
 
 ok("resep tetap dikembalikan", (await statusResep(rx4.prescriptionId))?.status === "baru");
@@ -346,7 +368,7 @@ console.log("\n== 6. Terbitkan resep baru setelah pembatalan ==");
  * dibatalkan tetap tersimpan sebagai riwayat dan tidak boleh menghalangi.
  */
 const v5 = await buatVisit(`${TANDA}/V/5`);
-const rx5a = await simpanResep(v5, site, dokter, resepBaru(2));
+const rx5a = await simpanResepUji(v5, site, dokter, resepBaru(2));
 await batalkanResep(v5, site, "Salah dosis");
 
 ok("resep lama tersimpan sebagai riwayat, bukan terhapus",
@@ -355,7 +377,7 @@ ok("resep lama tersimpan sebagai riwayat, bukan terhapus",
 let rx5b: { prescriptionId: number; noResep: string } | null = null;
 let galatTerbit = "";
 try {
-  rx5b = await simpanResep(v5, site, dokter, resepBaru(3));
+  rx5b = await simpanResepUji(v5, site, dokter, resepBaru(3));
 } catch (e) {
   galatTerbit = e instanceof Error ? e.message : String(e);
 }

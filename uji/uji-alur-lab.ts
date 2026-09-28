@@ -396,6 +396,8 @@ const rx6 = await simpanResep(
    dokter masih menunggu hasil, dan yang diuji di bagian ini adalah
    pembatalan kunjungan yang resepnya sudah terkunci. */
 const o6 = await order(v6, "menyusul");
+// Dokter menekan Finalkan Asesmen — resep baru sampai di farmasi setelahnya.
+await execute(`UPDATE visits SET status = 'menunggu_farmasi' WHERE id = ?`, [v6]);
 await terimaResep(rx6.prescriptionId, site, apoteker);
 await validasiResep(rx6.prescriptionId, site, apoteker);
 

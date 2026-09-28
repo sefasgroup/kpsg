@@ -1,7 +1,6 @@
 import "server-only";
 import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { nextSequence, query, queryOne, transaction, limitAman } from "./db";
-import { kirimNotifikasi } from "./notifications";
 import { hapusBarisTagihanByRef, hitungUlangTagihan, pastikanTagihan } from "./billing";
 import { lepasReservasiResep } from "./pharmacy";
 import type { ResepInput } from "./validations/doctor";
@@ -157,6 +156,16 @@ export async function simpanResep(
     if (visit.site_id !== siteId) {
       throw new Error("Kunjungan ini bukan milik cabang Anda.");
     }
+    /*
+     * Resep hanya ditulis selama kunjungan di tahap dokter. Tanpa penjaga
+     * server ini, tab kedua atau permintaan langsung bisa menerbitkan resep
+     * setelah pasien membayar — obatnya masuk ke tagihan yang sudah lunas
+     * dan diserahkan tanpa dibayar. Layar dokter sudah menguncinya; ini
+     * lapis keduanya.
+     */
+    if (!["menunggu_dokter", "dalam_pemeriksaan", "menunggu_lab"].includes(String(visit.status))) {
+      throw new Error("Kunjungan ini sudah lewat tahap dokter — resep tidak bisa diubah lagi.");
+    }
 
     /*
      * Pembacaan biasa, BUKAN `FOR UPDATE`.
@@ -261,39 +270,10 @@ export async function simpanResep(
     }
 
     /*
-     * Beri tahu farmasi hanya saat resep BARU terbit, bukan setiap kali
-     * dokter menyimpan ulang draftnya — resep yang sama tidak boleh muncul
-     * berkali-kali di antrean farmasi.
-     *
-     * Ditujukan ke PERAN, bukan ke satu apoteker: siapa pun yang bertugas
-     * boleh mengambilnya. Menujukannya ke satu orang berarti resep
-     * menggantung bila orang itu libur.
-     *
-     * Dikirim di dalam transaksi yang sama, jadi kalau resepnya batal
-     * tersimpan, notifikasinya ikut batal.
+     * Farmasi TIDAK diberi tahu di sini. Resep yang disimpan masih draft
+     * dokter; ia baru sampai di farmasi saat Finalkan Asesmen — notifikasi
+     * "resep masuk" dikirim dari simpanAsesmen() di lib/doctor.ts.
      */
-    if (!lama) {
-      const [p] = await conn.execute<RowDataPacket[]>(
-        `SELECT p.nama, p.no_rm FROM visits v
-           JOIN patients p ON p.id = v.patient_id WHERE v.id = ?`,
-        [visitId],
-      );
-      const jumlah = input.items.length + input.racikans.length;
-      await kirimNotifikasi(
-        { roleCode: "farmasi", siteId },
-        {
-          jenis: "resep_masuk",
-          judul: `Resep baru — ${String(p[0]?.nama ?? "Pasien")}`,
-          pesan:
-            `${noResep} · ${jumlah} item` +
-            (input.racikans.length > 0 ? ` (termasuk ${input.racikans.length} racikan)` : ""),
-          link: `/farmasi/${prescriptionId}`,
-          siteId,
-        },
-        conn,
-      );
-    }
-
     return { prescriptionId, noResep };
   });
 }

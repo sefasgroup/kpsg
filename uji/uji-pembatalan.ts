@@ -35,6 +35,26 @@ import { pembayaranSchema } from "../src/lib/validations/cashier";
 import { hasilLabSchema, orderLabSchema } from "../src/lib/validations/lab";
 import { tanggalHariIni } from "../src/lib/tanggal";
 
+/*
+ * Resep hanya bisa ditulis selama kunjungan di tahap dokter (lib/prescription.ts).
+ * Uji ini menyiapkan kunjungannya langsung di tahap farmasi/kasir, jadi urutan
+ * nyatanya disimulasikan: kembali sebentar ke tahap dokter, tulis resep, lalu
+ * kembali ke status semula — seperti dokter menulis resep lalu menekan
+ * Finalkan Asesmen.
+ */
+async function simpanResepUji(...args: Parameters<typeof simpanResep>) {
+  const [visitId] = args;
+  const lama = (await queryOne<RowDataPacket & { status: string }>(
+    `SELECT status FROM visits WHERE id = ?`, [visitId]))!.status;
+  await execute(`UPDATE visits SET status = 'dalam_pemeriksaan' WHERE id = ?`, [visitId]);
+  try {
+    return await simpanResep(...args);
+  } finally {
+    await execute(`UPDATE visits SET status = ? WHERE id = ?`, [lama, visitId]);
+  }
+}
+
+
 let gagal = 0;
 const ok = (nama: string, lulus: boolean, detail = "") => {
   console.log(`  ${lulus ? "PASS" : "GAGAL"}  ${nama}${detail ? " — " + detail : ""}`);
@@ -220,7 +240,7 @@ const buatOrder = async (visitId: number) =>
 console.log("\n== 1. Batalkan pembayaran: kembali ke antrean, bukan mati ==");
 
 const v1 = await buatKunjungan("menunggu_farmasi");
-const rx1 = await simpanResep(v1, site, dokter, resep(3));
+const rx1 = await simpanResepUji(v1, site, dokter, resep(3));
 await terimaResep(rx1.prescriptionId, site, apoteker);
 await validasiResep(rx1.prescriptionId, site, apoteker);
 await bayar(v1, null, 1000);

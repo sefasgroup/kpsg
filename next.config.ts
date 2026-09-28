@@ -1,6 +1,14 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  /*
+   * Deploy membangun ke folder terpisah (NEXT_DIST_DIR=.next-baru) lalu
+   * menukarnya ke `.next` hanya bila build berhasil — lihat
+   * .github/workflows/deploy.yml. Membangun langsung ke `.next` menimpa
+   * berkas yang sedang dilayani `next start`, dan build yang gagal
+   * meninggalkan situs tanpa berkas yang utuh.
+   */
+  distDir: process.env.NEXT_DIST_DIR || ".next",
   experimental: {
     serverActions: {
       /*

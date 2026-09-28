@@ -5,14 +5,16 @@ on:
     branches:
       - main # Workflow akan aktif setiap kali ada push ke branch main
 
+# Dua deploy tidak boleh berjalan bersamaan di server yang sama.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
-        uses: actions/checkout@v4
-
       - name: Execute Remote Deploy Commands via SSH
         uses: appleboy/ssh-action@v1.0.3
         with:
@@ -20,9 +22,53 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          script_stop: true
           script: |
+            # Berhenti pada perintah pertama yang gagal. Tanpa ini build yang
+            # gagal tetap diikuti `pm2 restart`, dan situs mati.
+            set -eu
             cd /var/www/kpsg
-            git pull origin main
-            npm ci
-            npm run build
-            pm2 restart kpsg-app
+
+            # --- 1. Ambil kode --------------------------------------------
+            # --ff-only: menolak (dan menghentikan deploy) bila kode di server
+            # menyimpang, alih-alih diam-diam membuat merge commit.
+            LOCK_LAMA=$(git rev-parse HEAD:package-lock.json)
+            git fetch origin main
+            git merge --ff-only origin/main
+            LOCK_BARU=$(git rev-parse HEAD:package-lock.json)
+
+            # --- 2. Dependensi --------------------------------------------
+            # `npm ci` menghapus node_modules yang sedang dipakai server, jadi
+            # hanya dijalankan bila dependensinya memang berubah.
+            if [ "$LOCK_LAMA" != "$LOCK_BARU" ] || [ ! -d node_modules ]; then
+              echo "Dependensi berubah — npm ci"
+              npm ci
+            fi
+
+            # --- 3. Build ke folder yang TIDAK sedang dilayani ------------
+            # Dua folder bergantian (.next-a / .next-b). Nama folder tertanam
+            # di hasil build, jadi tidak boleh diganti nama setelahnya —
+            # server cukup diarahkan ke folder baru lewat NEXT_DIST_DIR.
+            AKTIF=$(cat .dist-aktif 2>/dev/null || echo .next)
+            if [ "$AKTIF" = ".next-a" ]; then BARU=.next-b; else BARU=.next-a; fi
+            echo "Aktif: $AKTIF — build ke: $BARU"
+            NEXT_DIST_DIR=$BARU npm run build
+
+            # --- 4. Pindahkan server ke build baru -------------------------
+            NEXT_DIST_DIR=$BARU pm2 restart kpsg-app --update-env
+
+            # --- 5. Pastikan situs benar-benar hidup; kalau tidak, kembali -
+            SEHAT=0
+            for i in $(seq 1 30); do
+              if curl -fsS -o /dev/null http://127.0.0.1:3000/login; then SEHAT=1; break; fi
+              sleep 2
+            done
+            if [ "$SEHAT" != "1" ]; then
+              echo "Situs tidak merespons setelah restart — kembali ke $AKTIF"
+              NEXT_DIST_DIR=$AKTIF pm2 restart kpsg-app --update-env
+              exit 1
+            fi
+
+            echo "$BARU" > .dist-aktif
+            pm2 save
+            echo "Deploy selesai: $(git rev-parse --short HEAD) di $BARU"

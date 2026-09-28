@@ -820,11 +820,22 @@ CREATE TABLE medical_assessments (
   visit_id      BIGINT UNSIGNED NOT NULL,
   site_id       BIGINT UNSIGNED NOT NULL,
   doctor_id     BIGINT UNSIGNED NOT NULL COMMENT 'Dokter yang benar-benar memeriksa (bisa dokter pengganti)',
-  -- SOAP
+  -- SOAP terstruktur (db/migrasi/2026-08-03-soap-detail.sql). Kolom yang juga
+  -- ada di nurse_assessments adalah SALINAN MILIK DOKTER, bukan penggantinya.
+  jenis_anamnesis  ENUM('auto','allo') NULL COMMENT 'auto = dari pasien sendiri; allo = dari pengantar/keluarga',
+  sumber_anamnesis VARCHAR(120) NULL COMMENT 'Wajib bila alloanamnesis, mis. "Ibu kandung"',
   subjective    TEXT NULL COMMENT 'S — anamnesis',
+  keluhan_utama      TEXT NULL,
+  riwayat_penyakit   TEXT NULL,
+  riwayat_pengobatan TEXT NULL,
+  riwayat_alergi     TEXT NULL,
   objective     TEXT NULL COMMENT 'O — pemeriksaan fisik',
+  keadaan_umum  ENUM('baik','sedang','buruk') NULL,
+  keadaan_gizi  ENUM('baik','kurang','buruk') NULL,
+  status_lokalis TEXT NULL COMMENT 'JSON: {catatan, titik:[{sisi,x,y,keterangan}]} — titik pada body diagram',
   assessment    TEXT NULL COMMENT 'A — narasi penilaian (kode ICD-10 di assessment_diagnoses)',
   plan          TEXT NULL COMMENT 'P — rencana tatalaksana',
+  terapi        TEXT NULL COMMENT 'Tatalaksana non-resep',
   edukasi       TEXT NULL,
   prognosis     VARCHAR(100) NULL,
   status        ENUM('draft','final','batal') NOT NULL DEFAULT 'draft',
@@ -844,7 +855,8 @@ CREATE TABLE assessment_diagnoses (
   id            BIGINT UNSIGNED NOT NULL AUTO_INCREMENT,
   assessment_id BIGINT UNSIGNED NOT NULL,
   icd10_code    VARCHAR(10) NOT NULL,
-  tipe          ENUM('primer','sekunder','komplikasi') NOT NULL DEFAULT 'primer',
+  tipe          ENUM('primer','sekunder','komplikasi','banding') NOT NULL DEFAULT 'primer'
+                  COMMENT 'primer = diagnosa utama; banding = diagnosa banding (belum ditegakkan)',
   keterangan    VARCHAR(255) NULL,
   PRIMARY KEY (id),
   UNIQUE KEY uq_ad (assessment_id, icd10_code),

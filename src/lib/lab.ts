@@ -254,6 +254,14 @@ async function statusSetelahLab(
   if (["menunggu_obat", "selesai", "batal"].includes(status)) return status;
 
   /*
+   * Pasien yang BELUM sampai ke dokter juga tidak dipindahkan. Order di
+   * tahap ini hanya bisa berupa APS (`menyusul`) — hasilnya tidak boleh
+   * melompatkan pasien melewati perawat: ia hilang dari worklist perawat,
+   * pengkajiannya ditolak, dan triase/TTV/BMHP terlewat.
+   */
+  if (["terdaftar", "menunggu_perawat"].includes(status)) return status;
+
+  /*
    * Hanya order DITUNGGU yang menahan pasien. Order `menyusul` boleh
    * menggantung berhari-hari tanpa membuat pasien terkurung di
    * `menunggu_lab` — itulah seluruh gunanya pembedaan ini.
@@ -265,6 +273,14 @@ async function statusSetelahLab(
     [visitId],
   );
   if (labLain.length > 0) return "menunggu_lab";
+
+  /*
+   * Kunjungan yang sedang diperiksa tetap di tangan dokter — dokter sedang
+   * di dalamnya, dan mengembalikannya ke `menunggu_dokter` hanya mengacak
+   * antrean. (Pemeriksaan order ditunggu di atas tetap berlaku: dokter yang
+   * mengubah order jadi `ditunggu` memang memindahkan pasien ke lab.)
+   */
+  if (status === "dalam_pemeriksaan") return status;
 
   /*
    * HASIL YANG DITUNGGU SELALU KEMBALI KE DOKTER — termasuk bila asesmennya

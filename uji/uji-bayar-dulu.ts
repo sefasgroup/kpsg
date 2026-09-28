@@ -36,6 +36,26 @@ import { pembayaranSchema } from "../src/lib/validations/cashier";
 import { hasilLabSchema, orderLabSchema } from "../src/lib/validations/lab";
 import { tanggalHariIni } from "../src/lib/tanggal";
 
+/*
+ * Resep hanya bisa ditulis selama kunjungan di tahap dokter (lib/prescription.ts).
+ * Uji ini menyiapkan kunjungannya langsung di tahap farmasi/kasir, jadi urutan
+ * nyatanya disimulasikan: kembali sebentar ke tahap dokter, tulis resep, lalu
+ * kembali ke status semula — seperti dokter menulis resep lalu menekan
+ * Finalkan Asesmen.
+ */
+async function simpanResepUji(...args: Parameters<typeof simpanResep>) {
+  const [visitId] = args;
+  const lama = (await queryOne<RowDataPacket & { status: string }>(
+    `SELECT status FROM visits WHERE id = ?`, [visitId]))!.status;
+  await execute(`UPDATE visits SET status = 'dalam_pemeriksaan' WHERE id = ?`, [visitId]);
+  try {
+    return await simpanResep(...args);
+  } finally {
+    await execute(`UPDATE visits SET status = ? WHERE id = ?`, [lama, visitId]);
+  }
+}
+
+
 let gagal = 0;
 const ok = (nama: string, lulus: boolean, detail = "") => {
   console.log(`  ${lulus ? "PASS" : "GAGAL"}  ${nama}${detail ? " — " + detail : ""}`);
@@ -198,7 +218,7 @@ async function bayar(visitId: number) {
 console.log("\n== 1. Validasi: kunci, bukan potong ==");
 
 const v1 = await buatKunjungan();
-const rx1 = await simpanResep(v1, site, dokter, resep(6));
+const rx1 = await simpanResepUji(v1, site, dokter, resep(6));
 await terimaResep(rx1.prescriptionId, site, apoteker);
 
 const sebelum = await saldo();
@@ -230,7 +250,7 @@ ok("belum ada pergerakan stok tercatat", Number(kartu?.n) === 0, String(kartu?.n
 console.log("\n== 2. Reservasi menahan resep lain ==");
 
 const v2 = await buatKunjungan();
-const rx2 = await simpanResep(v2, site, dokter, resep(6));
+const rx2 = await simpanResepUji(v2, site, dokter, resep(6));
 await terimaResep(rx2.prescriptionId, site, apoteker);
 
 let ditolak = "";
@@ -255,7 +275,7 @@ ok("reservasi resep pertama tidak ikut berubah",
 
 // Yang muat pada sisa stok tetap boleh.
 const v3 = await buatKunjungan();
-const rx3 = await simpanResep(v3, site, dokter, resep(4));
+const rx3 = await simpanResepUji(v3, site, dokter, resep(4));
 await terimaResep(rx3.prescriptionId, site, apoteker);
 await validasiResep(rx3.prescriptionId, site, apoteker);
 ok("resep yang muat pada sisa stok tetap bisa divalidasi",
@@ -403,7 +423,7 @@ ok("penanda reservasi dibersihkan",
  * 6 tablet tetap ditolak dan itu BENAR.
  */
 const v4 = await buatKunjungan();
-const rx4 = await simpanResep(v4, site, dokter, resep(4));
+const rx4 = await simpanResepUji(v4, site, dokter, resep(4));
 await terimaResep(rx4.prescriptionId, site, apoteker);
 
 let bolehLagi = "";
@@ -437,7 +457,7 @@ await transaction((conn) =>
 );
 
 const v5 = await buatKunjungan();
-const rx5 = await simpanResep(v5, site, dokter, resep(2));
+const rx5 = await simpanResepUji(v5, site, dokter, resep(2));
 await terimaResep(rx5.prescriptionId, site, apoteker);
 await validasiResep(rx5.prescriptionId, site, apoteker);
 
@@ -476,7 +496,7 @@ console.log("\n== 6b-2. Pengembalian dari tahap kasir ==");
  *     ulang — kunjungan mati total.
  */
 const v5b = await buatKunjungan();
-const rx5b = await simpanResep(v5b, site, dokter, resep(2));
+const rx5b = await simpanResepUji(v5b, site, dokter, resep(2));
 await terimaResep(rx5b.prescriptionId, site, apoteker);
 await validasiResep(rx5b.prescriptionId, site, apoteker);
 
@@ -503,7 +523,7 @@ ok("tagihannya turun kembali ke draft",
  * menghitung ulang total pada struk yang uangnya sudah diterima.
  */
 const v5c = await buatKunjungan();
-const rx5c = await simpanResep(v5c, site, dokter, resep(1));
+const rx5c = await simpanResepUji(v5c, site, dokter, resep(1));
 await terimaResep(rx5c.prescriptionId, site, apoteker);
 await validasiResep(rx5c.prescriptionId, site, apoteker);
 await bayar(v5c);
@@ -592,7 +612,7 @@ async function finalkanOrder(orderId: number) {
 }
 
 const v6 = await buatKunjungan();
-const rx6 = await simpanResep(v6, site, dokter, resep(1));
+const rx6 = await simpanResepUji(v6, site, dokter, resep(1));
 await execute(
   `INSERT INTO medical_assessments (visit_id, site_id, doctor_id, status)
    VALUES (?,?,?, 'final')`,
@@ -652,7 +672,20 @@ ok(
   await statusVisit(v6),
 );
 
+// Selama pasien kembali di tangan dokter, farmasi BELUM boleh mengunci
+// resepnya — hasil yang ditunggu wajib dinilai dokter lebih dulu (§3.1).
+let tolakSebelumDinilai = "";
+try {
+  await validasiResep(rx6.prescriptionId, site, apoteker);
+} catch (e) {
+  tolakSebelumDinilai = (e as Error).message;
+}
+ok("validasi ditolak sebelum dokter menilai hasil lab",
+  tolakSebelumDinilai !== "", tolakSebelumDinilai);
+
+// Dokter menilai hasilnya lalu menekan Finalkan Asesmen → kembali ke farmasi.
 // Barulah farmasi boleh mengunci resepnya.
+await execute(`UPDATE visits SET status = 'menunggu_farmasi' WHERE id = ?`, [v6]);
 await validasiResep(rx6.prescriptionId, site, apoteker);
 ok("sesudah hasil keluar, validasi berhasil",
   (await statusVisit(v6)) === "menunggu_kasir", await statusVisit(v6));
