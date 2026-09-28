@@ -184,6 +184,22 @@ export async function daftarkanKunjungan(
   userId: number,
 ): Promise<{ id: number; no_visit: string; antrean: string }> {
   return transaction(async (conn) => {
+    /*
+     * Baris pasien dikunci SEBAGAI PERNYATAAN PERTAMA transaksi.
+     *
+     * Pemeriksaan "sudah di antrean poli ini" di bawah hanyalah SELECT biasa
+     * tanpa kunci unik yang mendukungnya — dua petugas (atau satu klik
+     * ganda) yang mendaftarkan pasien yang sama bersamaan sama-sama lolos.
+     * Kunci ini membuat pendaftaran kedua menunggu yang pertama.
+     *
+     * Harus yang PERTAMA: di REPEATABLE READ, snapshot baca InnoDB terbentuk
+     * pada SELECT biasa pertama. Bila ada bacaan biasa sebelum kunci ini,
+     * transaksi kedua tetap membaca snapshot lama — setelah menunggu pun ia
+     * tidak melihat kunjungan yang baru saja dibuat transaksi pertama.
+     * (Terbukti di uji-sisa.ts: tiga pendaftaran serentak, tiga berhasil.)
+     */
+    await conn.execute(`SELECT id FROM patients WHERE id = ? FOR UPDATE`, [input.patient_id]);
+
     const [siteRows] = await conn.execute<RowDataPacket[]>(
       `SELECT kode FROM sites WHERE id = ?`,
       [siteId],

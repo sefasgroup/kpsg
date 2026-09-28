@@ -40,6 +40,8 @@ export function TambahJadwal({
       toast.success("Jadwal praktik ditambahkan.");
       setOpen(false);
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }
@@ -154,6 +156,8 @@ export function HapusJadwal({ id, label }: { id: number; label: string }) {
       }
       toast.success("Jadwal dinonaktifkan.");
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }

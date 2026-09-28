@@ -46,7 +46,12 @@ export function CetakRekamMedis({
    * saat elemennya masih kosong dan yang keluar adalah halaman putih.
    */
   async function muat(): Promise<DataRekamMedis | null> {
-    if (data) return data;
+    /*
+     * Selalu diambil ulang, tidak memakai hasil pengambilan sebelumnya.
+     * Tombol ini ada juga di layar pemeriksaan yang masih draft: dokter
+     * mencetak, mengubah SOAP atau diagnosa, lalu mencetak lagi — dan dulu
+     * yang keluar adalah isi LAMA dari cetakan pertama.
+     */
     setMemuat(true);
     try {
       const h = await ambilRekamMedisAction(visitId);

@@ -92,6 +92,13 @@ export const GAYA_NOTIFIKASI: Record<string, Gaya> = {
     icon: FileClock,
     warna: "text-warning",
   },
+  // Order lab dibatalkan setelah pasien membayar — uangnya harus kembali.
+  pengembalian_dana: {
+    label: "Pengembalian dana",
+    icon: Undo2,
+    warna: "text-warning",
+    mendesak: true,
+  },
   stok_menipis: { label: "Stok menipis", icon: Package, warna: "text-warning" },
   stok_habis: {
     label: "Stok habis",

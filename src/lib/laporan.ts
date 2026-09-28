@@ -74,6 +74,13 @@ export async function ringkasanCabang(
     menunggu: number; nilai_menunggu: string;
     draft: number; nilai_draft: string;
   }>(
+    /*
+     * Pendapatan dibukukan pada TANGGAL BAYAR, bukan tanggal kunjungan —
+     * sama dengan kas shift. Kunjungan tertunda (§3.3) yang dibayar hari ini
+     * dulu masuk ke pendapatan kemarin, sehingga laporan harian tidak pernah
+     * cocok dengan uang di laci. Tagihan yang belum lunas tetap mengikuti
+     * tanggal kunjungannya.
+     */
     `SELECT SUM(bt.status = 'lunas') AS lunas,
             COALESCE(SUM(CASE WHEN bt.status = 'lunas' THEN bt.total END), 0) AS pendapatan,
             SUM(bt.status = 'menunggu') AS menunggu,
@@ -82,8 +89,10 @@ export async function ringkasanCabang(
             COALESCE(SUM(CASE WHEN bt.status = 'draft' THEN bt.total END), 0) AS nilai_draft
        FROM billing_transactions bt
        JOIN visits v ON v.id = bt.visit_id
-      WHERE bt.site_id = ? AND v.tanggal BETWEEN ? AND ?`,
-    [siteId, dari, sampai],
+      WHERE bt.site_id = ?
+        AND ((bt.status = 'lunas' AND DATE(bt.paid_at) BETWEEN ? AND ?)
+             OR (bt.status IN ('menunggu','draft') AND v.tanggal BETWEEN ? AND ?))`,
+    [siteId, dari, sampai, dari, sampai],
   );
 
   const lunas = Number(b?.lunas ?? 0);
@@ -122,11 +131,13 @@ export async function kunjunganHarian(
             COUNT(*) AS kunjungan,
             SUM(v.jenis_kunjungan = 'baru') AS baru,
             SUM(v.status = 'selesai') AS selesai,
-            COALESCE(SUM(CASE WHEN bt.status = 'lunas' THEN bt.total END), 0) AS pendapatan
+            -- Pendapatan per TANGGAL BAYAR (lihat ringkasanCabang).
+            COALESCE((SELECT SUM(bt.total) FROM billing_transactions bt
+                       WHERE bt.site_id = v.site_id AND bt.status = 'lunas'
+                         AND DATE(bt.paid_at) = v.tanggal), 0) AS pendapatan
        FROM visits v
-       LEFT JOIN billing_transactions bt ON bt.visit_id = v.id
       WHERE v.site_id = ? AND v.tanggal BETWEEN ? AND ? AND v.status <> 'batal'
-      GROUP BY v.tanggal
+      GROUP BY v.tanggal, v.site_id
       ORDER BY v.tanggal`,
     [siteId, dari, sampai],
   );
@@ -148,13 +159,34 @@ export async function pendapatanKategori(
     `SELECT bi.kategori, COUNT(*) AS jumlah_baris, COALESCE(SUM(bi.subtotal), 0) AS nilai
        FROM billing_items bi
        JOIN billing_transactions bt ON bt.id = bi.billing_id
-       JOIN visits v ON v.id = bt.visit_id
       WHERE bt.site_id = ? AND bt.status = 'lunas'
-        AND v.tanggal BETWEEN ? AND ?
+        AND DATE(bt.paid_at) BETWEEN ? AND ?
       GROUP BY bi.kategori
       ORDER BY nilai DESC`,
     [siteId, dari, sampai],
   );
+}
+
+/**
+ * Diskon dan pembulatan yang ditetapkan kasir di tingkat TAGIHAN.
+ *
+ * Komposisi per kategori menjumlahkan baris biaya (nilai kotor), sedangkan
+ * angka Pendapatan adalah total tagihan setelah diskon dan pembulatan.
+ * Tanpa baris penyesuaian ini kedua angka di layar yang sama tidak pernah
+ * cocok, dan selisihnya terbaca seperti uang yang hilang.
+ */
+export async function penyesuaianPendapatan(
+  siteId: number,
+  dari: string,
+  sampai: string,
+): Promise<{ diskon: number; pembulatan: number }> {
+  const r = await queryOne<RowDataPacket & { diskon: string; pembulatan: string }>(
+    `SELECT COALESCE(SUM(bt.diskon), 0) AS diskon, COALESCE(SUM(bt.pembulatan), 0) AS pembulatan
+       FROM billing_transactions bt
+      WHERE bt.site_id = ? AND bt.status = 'lunas' AND DATE(bt.paid_at) BETWEEN ? AND ?`,
+    [siteId, dari, sampai],
+  );
+  return { diskon: Number(r?.diskon ?? 0), pembulatan: Number(r?.pembulatan ?? 0) };
 }
 
 export type MetodeBayar = RowDataPacket & {
@@ -176,8 +208,7 @@ export async function metodeBayar(
     `SELECT bt.payment_method, COUNT(*) AS jumlah,
             COALESCE(SUM(bt.dibayar - bt.kembalian), 0) AS nilai
        FROM billing_transactions bt
-       JOIN visits v ON v.id = bt.visit_id
-      WHERE bt.site_id = ? AND bt.status = 'lunas' AND v.tanggal BETWEEN ? AND ?
+      WHERE bt.site_id = ? AND bt.status = 'lunas' AND DATE(bt.paid_at) BETWEEN ? AND ?
       GROUP BY bt.payment_method
       ORDER BY nilai DESC`,
     [siteId, dari, sampai],

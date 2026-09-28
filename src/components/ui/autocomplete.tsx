@@ -35,16 +35,27 @@ export function Autocomplete<T>({
 
   useEffect(() => {
     if (q.length < minKarakter) return;
+    /*
+     * Jawaban yang datang setelah kata kunci berganti DIBUANG. Tanpa ini
+     * pencarian "para" yang lambat bisa tiba sesudah "parac" dan menimpa
+     * cache-nya — daftar lalu menampilkan "tidak ada hasil untuk parac"
+     * padahal hasilnya sudah ada.
+     */
+    let usang = false;
     const timer = setTimeout(() => {
       startCari(async () => {
         try {
-          setCache({ q, rows: await cari(q) });
+          const rows = await cari(q);
+          if (!usang) setCache({ q, rows });
         } catch {
-          setCache({ q, rows: [] });
+          if (!usang) setCache({ q, rows: [] });
         }
       });
     }, 250);
-    return () => clearTimeout(timer);
+    return () => {
+      usang = true;
+      clearTimeout(timer);
+    };
     // `cari` sengaja tidak dijadikan dependensi: ia adalah referensi Server
     // Action yang stabil per modul, dan memasukkannya memicu pencarian ulang
     // setiap render induk.

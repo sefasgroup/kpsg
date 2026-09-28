@@ -290,6 +290,8 @@ export async function getPemeriksaan(
 
 export type AsesmenTersimpan = RowDataPacket & {
   id: number;
+  /** Dokter yang benar-benar memeriksa (getAsesmen memakai SELECT *). */
+  doctor_id: number;
   // --- S ---
   jenis_anamnesis: "auto" | "allo" | null;
   sumber_anamnesis: string | null;

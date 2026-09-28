@@ -577,9 +577,13 @@ export default async function PemeriksaanPage({
         gelar={profilDokter?.gelar_depan ?? null}
         noSip={profilDokter?.no_sip ?? null}
         hariIni={tanggalHariIni()}
+        // Sama dengan terbitkanSurat(): dokter yang MENGISI asesmen, atau —
+        // bila belum ada asesmen — dokter terjadwal/penggantinya.
         boleh={
-          Number(visit.doctor_id) === session.id ||
-          Number(visit.substitute_doctor_id ?? 0) === session.id
+          asesmen
+            ? Number(asesmen.doctor_id) === session.id
+            : Number(visit.doctor_id) === session.id ||
+              Number(visit.substitute_doctor_id ?? 0) === session.id
         }
         dokterPenanggung={visit.dokter_nama}
         pasien={{

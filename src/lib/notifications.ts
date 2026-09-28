@@ -45,7 +45,8 @@ export type JenisNotifikasi =
   | "tanpa_pengganti"
   // --- Kepatuhan & keuangan penjamin ---
   | "ikp_baru"          // Pelapor      -> Admin Cabang (KTD & sentinel saja)
-  | "klaim_terlambat";  // Sapuan harian -> Admin Cabang
+  | "klaim_terlambat"   // Sapuan harian -> Admin Cabang
+  | "pengembalian_dana"; // Lab membatalkan order yang sudah dibayar -> Admin Cabang
 
 type Sasaran =
   | { userId: number }

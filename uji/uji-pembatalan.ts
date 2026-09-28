@@ -475,9 +475,18 @@ try {
 } catch (e) {
   tolakLunas = (e as Error).message;
 }
-ok("order pada kunjungan LUNAS DITOLAK", tolakLunas !== "", tolakLunas);
-ok("pesannya mengarahkan ke pembatalan pembayaran",
-  /lunas|kasir/i.test(tolakLunas), tolakLunas);
+/*
+ * Sejak perbaikan order menyusul yang bermasalah setelah pasien pulang:
+ * pembatalan pada kunjungan LUNAS DIIZINKAN tanpa mengubah tagihan yang
+ * sudah dibayar, dan Admin Cabang diberi tahu untuk pengembalian dana.
+ * Dulu ditolak — padahal pembatalan pembayaran juga sering ditolak (obat
+ * sudah diserahkan / shift ditutup), sehingga order menggantung selamanya.
+ */
+ok("order pada kunjungan LUNAS bisa dibatalkan", tolakLunas === "", tolakLunas);
+ok("admin cabang diberi tahu untuk pengembalian dana",
+  Number((await queryOne<RowDataPacket & { n: number }>(
+    `SELECT COUNT(*) n FROM notifications WHERE jenis = 'pengembalian_dana' AND link = ?`,
+    [`/lab/${o8b}`]))!.n) === 1);
 
 /* (c) order yang sudah selesai */
 let tolakSelesai = "";

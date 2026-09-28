@@ -142,18 +142,39 @@ await new Promise((resolve, reject) => {
 console.log("  2/3  menyalin storage/…");
 const asalStorage = path.join(process.cwd(), "storage");
 let jumlahBerkas = 0;
+const hitungBerkas = async (d) => {
+  let n = 0;
+  for (const e of await readdir(d, { withFileTypes: true })) {
+    if (e.name === ".gitignore") continue;
+    if (e.isDirectory()) n += await hitungBerkas(path.join(d, e.name));
+    else n++;
+  }
+  return n;
+};
+/*
+ * Hanya "folder belum ada" yang boleh dilewati. Dulu SETIAP galat (izin
+ * ditolak, disk penuh, berhenti di tengah) ditelan dan dilaporkan sebagai
+ * "storage/ kosong" — backup tampak utuh padahal lampiran rekam medis
+ * pasien tidak ikut. Galat lain kini menghentikan backup, dan jumlah berkas
+ * salinan dicocokkan dengan sumbernya.
+ */
+let adaStorage = true;
 try {
+  await stat(asalStorage);
+} catch (e) {
+  if (e?.code !== "ENOENT") throw e;
+  adaStorage = false;
+  console.log("       (storage/ belum ada — tidak ada lampiran untuk disalin)");
+}
+if (adaStorage) {
   await cp(asalStorage, path.join(folder, "storage"), { recursive: true });
-  const hitung = async (d) => {
-    for (const e of await readdir(d, { withFileTypes: true })) {
-      if (e.name === ".gitignore") continue;
-      if (e.isDirectory()) await hitung(path.join(d, e.name));
-      else jumlahBerkas++;
-    }
-  };
-  await hitung(asalStorage);
-} catch {
-  console.log("       (storage/ kosong atau belum ada)");
+  jumlahBerkas = await hitungBerkas(asalStorage);
+  const tersalin = await hitungBerkas(path.join(folder, "storage"));
+  if (tersalin !== jumlahBerkas) {
+    throw new Error(
+      `Penyalinan storage/ tidak lengkap: ${tersalin} dari ${jumlahBerkas} berkas. Backup DIBATALKAN.`,
+    );
+  }
 }
 
 console.log("  3/3  menulis manifest…");

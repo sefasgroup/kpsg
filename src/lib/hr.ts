@@ -3,7 +3,7 @@ import type { ResultSetHeader, RowDataPacket } from "mysql2/promise";
 import { execute, query, queryOne, transaction } from "./db";
 import { SQL_BERTUGAS_DI_CABANG } from "./auth";
 import { kirimNotifikasi } from "./notifications";
-import { hariDalamMinggu, rentangTanggal } from "./tanggal";
+import { hariDalamMinggu, rentangTanggal, tanggalHariIni } from "./tanggal";
 import type {
   CutiInput,
   JadwalInput,
@@ -54,18 +54,27 @@ export async function tambahJadwal(
      * jam persis: dokter tidak bisa ada di dua poli pada waktu yang
      * beririsan, meskipun jamnya tidak identik.
      */
+    /*
+     * Di cabang MANA PUN: dokter bisa bertugas di beberapa cabang
+     * (user_sites), dan orang yang sama tidak bisa praktik di Pusat dan di
+     * Cimahi pada jam yang beririsan.
+     */
     const [bentrok] = await conn.execute<RowDataPacket[]>(
-      `SELECT ds.id, pol.nama AS poli
-         FROM doctor_schedules ds JOIN polis pol ON pol.id = ds.poli_id
-        WHERE ds.site_id = ? AND ds.doctor_id = ? AND ds.hari = ?
+      `SELECT ds.id, pol.nama AS poli, st.nama AS cabang, ds.site_id
+         FROM doctor_schedules ds
+         JOIN polis pol ON pol.id = ds.poli_id
+         JOIN sites st  ON st.id = ds.site_id
+        WHERE ds.doctor_id = ? AND ds.hari = ?
           AND ds.is_active = 1
           AND ds.jam_mulai < ? AND ds.jam_selesai > ?
         LIMIT 1`,
-      [siteId, input.doctor_id, input.hari, input.jam_selesai, input.jam_mulai],
+      [input.doctor_id, input.hari, input.jam_selesai, input.jam_mulai],
     );
     if (bentrok[0]) {
       throw new Error(
-        `Bentrok dengan jadwal yang sudah ada di ${String(bentrok[0].poli)}.`,
+        Number(bentrok[0].site_id) === siteId
+          ? `Bentrok dengan jadwal yang sudah ada di ${String(bentrok[0].poli)}.`
+          : `Bentrok dengan jadwal dokter ini di cabang ${String(bentrok[0].cabang)} (${String(bentrok[0].poli)}).`,
       );
     }
 
@@ -560,7 +569,7 @@ export async function putuskanCuti(
   approverId: number,
   setuju: boolean,
   catatan?: string | null,
-): Promise<{ pengecualianDibuat: number }> {
+): Promise<{ pengecualianDibuat: number; penggantiDilepas: number }> {
   return transaction(async (conn) => {
     const [rows] = await conn.execute<RowDataPacket[]>(
       `SELECT lr.*, r.code AS role_code
@@ -600,7 +609,7 @@ export async function putuskanCuti(
     );
 
     if (!setuju || cuti.role_code !== "dokter") {
-      return { pengecualianDibuat: 0 };
+      return { pengecualianDibuat: 0, penggantiDilepas: 0 };
     }
 
     const jenisMap: Record<string, string> = {
@@ -621,12 +630,37 @@ export async function putuskanCuti(
 
     for (const tgl of tanggalCuti) {
       const [ada] = await conn.execute<RowDataPacket[]>(
-        `SELECT id FROM schedule_exceptions
+        `SELECT id, jenis, status FROM schedule_exceptions
           WHERE site_id = ? AND doctor_id = ? AND tanggal = ? AND status <> 'ditolak'
-          LIMIT 1`,
+          LIMIT 1 FOR UPDATE`,
         [siteId, cuti.user_id, tgl],
       );
-      if (ada[0]) continue;
+      if (ada[0]) {
+        /*
+         * Hari yang sudah punya pengecualian TIDAK boleh dilewati begitu saja.
+         * Dulu apa pun barisnya — `ganti_jam`, `tambahan`, atau yang masih
+         * `pending` — hari itu dilewati, sehingga dokter yang sedang cuti
+         * tetap tampil praktik dan pasien tetap bisa didaftarkan kepadanya.
+         * Kini baris itu dijadikan halangan yang disetujui; pengganti yang
+         * sudah ditetapkan pada baris halangan dipertahankan.
+         */
+        const halangan = ["libur", "cuti", "izin", "sakit"].includes(String(ada[0].jenis));
+        if (!halangan || ada[0].status !== "disetujui") {
+          await conn.execute(
+            `UPDATE schedule_exceptions
+                SET jenis = ?, status = 'disetujui', jam_mulai = NULL, jam_selesai = NULL,
+                    substitute_doctor_id = IF(? , substitute_doctor_id, NULL),
+                    alasan = ?, approved_by = ?, approved_at = NOW()
+              WHERE id = ?`,
+            [
+              jenis, halangan ? 1 : 0,
+              `Otomatis dari pengajuan cuti #${id}`, approverId, ada[0].id,
+            ],
+          );
+          dibuat++;
+        }
+        continue;
+      }
 
       await conn.execute(
         `INSERT INTO schedule_exceptions
@@ -640,7 +674,21 @@ export async function putuskanCuti(
       dibuat++;
     }
 
-    return { pengecualianDibuat: dibuat };
+    /*
+     * Dokter yang cuti tidak bisa sekaligus MENGGANTIKAN dokter lain pada
+     * hari-hari itu — di cabang mana pun. Penugasan penggantinya dilepas
+     * supaya pendaftaran menampilkan jadwal itu sebagai kosong (dan admin
+     * mencarikan pengganti lain), alih-alih mendaftarkan pasien ke dokter
+     * yang tidak hadir.
+     */
+    const [lepas] = await conn.execute<ResultSetHeader>(
+      `UPDATE schedule_exceptions
+          SET substitute_doctor_id = NULL
+        WHERE substitute_doctor_id = ? AND tanggal BETWEEN ? AND ? AND status <> 'ditolak'`,
+      [cuti.user_id, tanggalCuti[0], tanggalCuti[tanggalCuti.length - 1]],
+    );
+
+    return { pengecualianDibuat: dibuat, penggantiDilepas: lepas.affectedRows };
   });
 }
 
@@ -696,12 +744,35 @@ export async function absensiHarian(
   );
 }
 
+/**
+ * Pegawai yang absensinya ditulis harus bertugas di cabang ini. Id-nya
+ * datang dari klien — tanpa pemeriksaan ini admin cabang A bisa mengisi
+ * absensi staf cabang B hanya dengan menebak id.
+ */
+async function pastikanPegawaiCabang(siteId: number, userId: number): Promise<void> {
+  const ada = await queryOne<RowDataPacket & { id: number }>(
+    `SELECT u.id FROM users u
+      WHERE u.id = ? AND u.deleted_at IS NULL AND ${SQL_BERTUGAS_DI_CABANG}`,
+    [userId, siteId, siteId, siteId],
+  );
+  if (!ada) throw new Error("Pegawai ini tidak bertugas di cabang Anda.");
+}
+
 export async function catatAbsensi(
   siteId: number,
   userId: number,
   tanggal: string,
   aksi: "masuk" | "pulang",
 ): Promise<void> {
+  await pastikanPegawaiCabang(siteId, userId);
+  /*
+   * Jam masuk/pulang diisi NOW(), jadi tanggalnya harus hari ini. Layar
+   * sudah menyembunyikan tombolnya untuk tanggal lain, tetapi permintaan
+   * langsung bisa mencatat "masuk pukul 07.58" pada tanggal minggu lalu.
+   */
+  if (tanggal !== tanggalHariIni()) {
+    throw new Error("Jam masuk/pulang hanya bisa dicatat untuk hari ini.");
+  }
   await transaction(async (conn) => {
     /*
      * Pembacaan biasa, BUKAN `FOR UPDATE` — lihat `pastikanTagihan()` di
@@ -758,6 +829,13 @@ export async function setStatusAbsensi(
   status: string,
   catatan?: string | null,
 ): Promise<void> {
+  await pastikanPegawaiCabang(siteId, userId);
+  if (!["hadir", "terlambat", "izin", "sakit", "cuti", "alpha", "libur"].includes(status)) {
+    throw new Error("Status absensi tidak dikenal.");
+  }
+  if (tanggal > tanggalHariIni()) {
+    throw new Error("Status absensi tidak bisa diisi untuk tanggal yang belum tiba.");
+  }
   await execute(
     `INSERT INTO attendances (site_id, user_id, tanggal, status, metode, catatan)
      VALUES (?,?,?,?, 'manual', ?)

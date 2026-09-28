@@ -27,6 +27,36 @@ const nextConfig: NextConfig = {
       bodySizeLimit: "25mb",
     },
   },
+
+  /*
+   * Header keamanan dasar untuk setiap halaman.
+   *
+   * - X-Frame-Options / frame-ancestors: layar kasir dan resep tidak boleh
+   *   disematkan di situs lain (clickjacking — pengguna dikelabui menekan
+   *   "Bayar" atau "Serahkan" di balik tampilan palsu).
+   * - nosniff: berkas unggahan rekam medis tidak ditafsirkan ulang sebagai
+   *   skrip oleh peramban.
+   * - Referrer-Policy: URL berisi id kunjungan/pasien tidak bocor ke situs
+   *   luar lewat header Referer.
+   *
+   * CSP lengkap (script-src) sengaja belum dipasang: Next.js menyisipkan
+   * skrip inline dan menegakkannya butuh nonce — perlu diuji tersendiri.
+   */
+  async headers() {
+    return [
+      {
+        source: "/:path*",
+        headers: [
+          { key: "X-Frame-Options", value: "SAMEORIGIN" },
+          // SAMEORIGIN, bukan DENY: react-to-print mencetak lewat iframe di halaman sendiri.
+          { key: "Content-Security-Policy", value: "frame-ancestors 'self'" },
+          { key: "X-Content-Type-Options", value: "nosniff" },
+          { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
+          { key: "Permissions-Policy", value: "camera=(), microphone=(), geolocation=()" },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;

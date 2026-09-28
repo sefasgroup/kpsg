@@ -53,6 +53,8 @@ export function TambahPengecualian({
       setOpen(false);
       setForm({ ...form, doctor_id: "", substitute_doctor_id: "", alasan: "" });
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }
@@ -197,6 +199,8 @@ export function TombolPutusan({ id }: { id: number }) {
           : "Pengajuan ditolak.",
       );
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }

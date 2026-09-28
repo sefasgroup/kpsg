@@ -9,7 +9,7 @@ import { StatCard } from "@/components/ui/stat-card";
 import { requireRole } from "@/lib/auth";
 import {
   diagnosaTeratas, kunjunganHarian, metodeBayar, obatTeratas,
-  pendapatanKategori, produktivitasDokter, ringkasanCabang, ringkasanSdm,
+  pendapatanKategori, penyesuaianPendapatan, produktivitasDokter, ringkasanCabang, ringkasanSdm,
 } from "@/lib/laporan";
 import { KATEGORI_LABEL } from "@/lib/billing-labels";
 import { formatAngka, formatRupiah, formatTanggalPendek } from "@/lib/format";
@@ -45,7 +45,7 @@ export default async function LaporanPage({
   const sampai = tanggalValid(sp.sampai) ? sp.sampai : tanggalHariIni();
   const dari = tanggalValid(sp.dari) ? sp.dari : tambahHari(sampai, -29);
 
-  const [ring, harian, kategori, metode, diagnosa, dokter, obat, sdm] =
+  const [ring, harian, kategori, metode, diagnosa, dokter, obat, sdm, sesuai] =
     await Promise.all([
       ringkasanCabang(siteId, dari, sampai),
       kunjunganHarian(siteId, dari, sampai),
@@ -55,6 +55,7 @@ export default async function LaporanPage({
       produktivitasDokter(siteId, dari, sampai),
       obatTeratas(siteId, dari, sampai),
       ringkasanSdm(siteId, dari, sampai),
+      penyesuaianPendapatan(siteId, dari, sampai),
     ]);
 
   const totalKategori = kategori.reduce((n, k) => n + Number(k.nilai), 0);
@@ -229,6 +230,30 @@ export default async function LaporanPage({
                   );
                 })}
               </ul>
+
+              {/* Rekonsiliasi: nilai kotor per kategori → pendapatan bersih. */}
+              {sesuai.diskon !== 0 || sesuai.pembulatan !== 0 ? (
+                <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 border-t border-dashed border-line pt-2 text-meta">
+                  <dt className="text-ink-muted">Jumlah kategori</dt>
+                  <dd className="text-right tabular text-ink">{formatRupiah(totalKategori)}</dd>
+                  {sesuai.diskon !== 0 ? (
+                    <>
+                      <dt className="text-ink-muted">Diskon kasir</dt>
+                      <dd className="text-right tabular text-ink">−{formatRupiah(sesuai.diskon)}</dd>
+                    </>
+                  ) : null}
+                  {sesuai.pembulatan !== 0 ? (
+                    <>
+                      <dt className="text-ink-muted">Pembulatan</dt>
+                      <dd className="text-right tabular text-ink">{formatRupiah(sesuai.pembulatan)}</dd>
+                    </>
+                  ) : null}
+                  <dt className="font-medium text-ink">Pendapatan</dt>
+                  <dd className="text-right font-medium tabular text-ink">
+                    {formatRupiah(totalKategori - sesuai.diskon + sesuai.pembulatan)}
+                  </dd>
+                </dl>
+              ) : null}
 
               <div className="mt-4 border-t border-line pt-3">
                 <p className="mb-2 text-label text-ink-muted">Metode Pembayaran</p>

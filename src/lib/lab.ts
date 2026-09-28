@@ -406,13 +406,20 @@ export async function batalkanOrderLab(
       );
     }
 
-    if (order.billing_status === "lunas") {
-      throw new Error(
-        "Tagihan kunjungan ini sudah lunas. Membatalkan order akan mengubah " +
-        "angka pada struk yang sudah dibayar — batalkan pembayarannya di kasir " +
-        "lebih dulu bila memang perlu dikoreksi.",
-      );
-    }
+    /*
+     * Tagihan LUNAS tidak lagi menghalangi pembatalan.
+     *
+     * Order `menyusul` (mis. kultur) sering baru bermasalah berhari-hari
+     * setelah pasien membayar dan pulang — sampel lisis, media terkontaminasi.
+     * Dulu pembatalannya ditolak dan petugas disuruh membatalkan pembayaran
+     * lebih dulu, padahal itu juga ditolak (obat sudah diserahkan / shift
+     * sudah ditutup); order itu lalu menggantung di antrean lab selamanya.
+     *
+     * Kini order dibatalkan TANPA mengubah tagihan yang sudah dibayar —
+     * struk yang tercetak tetap benar — dan Admin Cabang diberi tahu bahwa
+     * tarifnya perlu dikembalikan kepada pasien.
+     */
+    const sudahLunas = order.billing_status === "lunas";
 
     const visitId = Number(order.visit_id);
 
@@ -433,19 +440,36 @@ export async function batalkanOrderLab(
       [orderId],
     );
 
-    // Biaya ikut dibatalkan — pemeriksaan tidak jadi dikerjakan.
-    const billingId = await pastikanTagihan(conn, visitId, siteId);
     const [panels] = await conn.execute<RowDataPacket[]>(
-      `SELECT id FROM lab_order_panels WHERE order_id = ?`,
+      `SELECT id, tarif FROM lab_order_panels WHERE order_id = ?`,
       [orderId],
     );
-    for (const p of panels) {
-      await conn.execute(
-        `DELETE FROM billing_items WHERE billing_id = ? AND ref_type = ? AND ref_id = ?`,
-        [billingId, REF_LAB, p.id],
+    if (!sudahLunas) {
+      // Biaya ikut dibatalkan — pemeriksaan tidak jadi dikerjakan.
+      const billingId = await pastikanTagihan(conn, visitId, siteId);
+      for (const p of panels) {
+        await conn.execute(
+          `DELETE FROM billing_items WHERE billing_id = ? AND ref_type = ? AND ref_id = ?`,
+          [billingId, REF_LAB, p.id],
+        );
+      }
+      await hitungUlangTagihan(conn, billingId);
+    } else {
+      const tarif = panels.reduce((n, p) => n + Number(p.tarif), 0);
+      await kirimNotifikasi(
+        { roleCode: "admin_cabang", siteId },
+        {
+          jenis: "pengembalian_dana",
+          judul: `Pengembalian dana lab — ${String(order.pasien)}`,
+          pesan:
+            `${String(order.no_order)} dibatalkan setelah tagihan lunas (${alasan.slice(0, 80)}). ` +
+            `Tarif Rp ${tarif.toLocaleString("id-ID")} sudah dibayar pasien — proses pengembaliannya.`,
+          link: `/lab/${orderId}`,
+          siteId,
+        },
+        conn,
       );
     }
-    await hitungUlangTagihan(conn, billingId);
 
     const statusKunjungan = await statusSetelahLab(conn, visitId);
     await conn.execute(`UPDATE visits SET status = ? WHERE id = ?`, [
@@ -517,8 +541,10 @@ export async function ubahSifatHasil(
     if (kunjunganId) await kunciKunjungan(conn, kunjunganId);
 
     const [rows] = await conn.execute<RowDataPacket[]>(
-      `SELECT id, visit_id, status, no_order, sifat_hasil FROM lab_orders
-        WHERE id = ? AND site_id = ? FOR UPDATE`,
+      `SELECT lo.id, lo.visit_id, lo.status, lo.no_order, lo.sifat_hasil,
+              lo.atas_permintaan_sendiri, v.status AS visit_status
+         FROM lab_orders lo JOIN visits v ON v.id = lo.visit_id
+        WHERE lo.id = ? AND lo.site_id = ? FOR UPDATE`,
       [orderId, siteId],
     );
     const order = rows[0];
@@ -528,6 +554,19 @@ export async function ubahSifatHasil(
         "Order ini sudah selesai atau dibatalkan — sifat hasilnya tidak lagi berpengaruh.",
       );
     }
+    // APS dibuat petugas lab tanpa instruksi dokter dan sengaja selalu
+    // `menyusul` — tidak ada dokter yang menunggu hasilnya.
+    if (Number(order.atas_permintaan_sendiri) === 1) {
+      throw new Error("Order APS selalu bersifat menyusul dan tidak bisa diubah.");
+    }
+    /*
+     * Tahap kunjungan sengaja TIDAK dibatasi: §3.1 mendukung dokter yang
+     * baru menyadari hasilnya dibutuhkan setelah asesmen final — hasil yang
+     * ditunggu "selalu kembali ke dokter, termasuk bila asesmennya sudah
+     * terlanjur final". Kunjungan yang sudah dibayar/selesai tidak ikut
+     * bergerak (statusSetelahLab), dan finalisasi ulang dengan resep yang
+     * sudah divalidasi langsung ke kasir (simpanAsesmen).
+     */
 
     const visitId = Number(order.visit_id);
     await conn.execute(`UPDATE lab_orders SET sifat_hasil = ? WHERE id = ?`, [
@@ -762,13 +801,27 @@ export async function simpanHasilLab(
     for (const h of input.hasil) {
       if (h.nilai === "") continue;
 
+      /*
+       * Parameter harus milik panel yang BENAR-BENAR dipesan pada order ini
+       * (dan panelnya tidak dibatalkan). Panelnya pun diambil dari sini,
+       * bukan dari kiriman formulir — tanpa itu hasil untuk pemeriksaan
+       * yang tidak pernah dipesan bisa tersimpan dan ikut tercetak di lembar
+       * hasil pasien.
+       */
       const [parRows] = await conn.execute<RowDataPacket[]>(
-        `SELECT id, satuan, tipe_nilai, ref_low, ref_high, ref_teks, kritis_low, kritis_high
-           FROM lab_parameters WHERE id = ?`,
-        [h.parameter_id],
+        `SELECT p.id, p.panel_id, p.satuan, p.tipe_nilai, p.ref_low, p.ref_high, p.ref_teks,
+                p.kritis_low, p.kritis_high
+           FROM lab_parameters p
+           JOIN lab_order_panels lop
+             ON lop.panel_id = p.panel_id AND lop.order_id = ? AND lop.status <> 'batal'
+          WHERE p.id = ?
+          LIMIT 1`,
+        [orderId, h.parameter_id],
       );
       const par = parRows[0];
-      if (!par) continue;
+      if (!par) {
+        throw new Error("Ada parameter yang tidak termasuk panel yang dipesan pada order ini.");
+      }
 
       const numerik = par.tipe_nilai === "numerik";
       const nilaiNum = numerik ? Number(h.nilai) : null;
@@ -795,7 +848,7 @@ export async function simpanHasilLab(
            catatan = VALUES(catatan), entered_by = VALUES(entered_by),
            entered_at = NOW()`,
         [
-          orderId, h.panel_id, h.parameter_id,
+          orderId, par.panel_id, h.parameter_id,
           numerik && !Number.isNaN(nilaiNum) ? nilaiNum : null,
           numerik ? null : h.nilai,
           par.satuan ?? null, par.ref_teks ?? null, flag,

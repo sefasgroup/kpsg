@@ -23,6 +23,7 @@
 import { createJiti } from "jiti";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
+import { readFileSync } from "node:fs";
 
 const dir = path.dirname(fileURLToPath(import.meta.url));
 const berkas = process.argv[2];
@@ -30,6 +31,24 @@ const berkas = process.argv[2];
 if (!berkas) {
   console.error("Pemakaian: node uji/jalankan.mjs <berkas.ts>");
   process.exit(2);
+}
+
+/*
+ * Kredensial DB dibaca dari .env.local / .env — sama seperti backup.mjs dan
+ * kosongkan.mjs. Tanpa ini `npm run sapu:tertunda` di server gagal login ke
+ * MySQL begitu database diberi password (rotasi-kredensial.mjs), atau diam-diam
+ * menyapu basis data bernama bawaan. Nilai yang sudah ada di lingkungan
+ * (mis. `DB_NAME=... node uji/jalankan.mjs`) tetap didahulukan.
+ */
+for (const berkas of [".env.local", ".env"]) {
+  try {
+    for (const baris of readFileSync(path.join(process.cwd(), berkas), "utf8").split(/\r?\n/)) {
+      const m = /^\s*([A-Z0-9_]+)\s*=\s*(.*)$/.exec(baris);
+      if (m && process.env[m[1]] === undefined) {
+        process.env[m[1]] = m[2].replace(/^["']|["']$/g, "");
+      }
+    }
+  } catch { /* berkas tidak ada */ }
 }
 
 // Kredensial DB disamakan dengan default lib/db.ts bila .env tidak terbaca.

@@ -193,7 +193,7 @@ export async function putuskanCutiAction(
   id: number,
   setuju: boolean,
   catatan?: string,
-): Promise<ActionResult<{ pengecualianDibuat: number }>> {
+): Promise<ActionResult<{ pengecualianDibuat: number; penggantiDilepas: number }>> {
   const session = await requireRole(...ROLE_HR);
   const tolak = tolakSuperAdmin(session);
   if (tolak) return tolak;

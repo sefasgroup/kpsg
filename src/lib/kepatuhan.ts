@@ -130,6 +130,35 @@ export async function simpanConsent(
       throw new Error("Kunjungan ini sudah dibatalkan — persetujuan tidak bisa dicatat.");
     }
 
+    /*
+     * Nama tindakan dan nama pemberi penjelasan DIBEKUKAN ke dalam `isi`.
+     *
+     * Templatnya hanya berbunyi "tindakan tersebut"; nama tindakan dan nama
+     * dokter dulu baru digabungkan saat dokumen ditampilkan, dari master
+     * data. Mengganti nama tindakan atau memperbaiki nama staf lalu diam-diam
+     * mengubah dokumen yang sudah ditandatangani pasien — padahal §4
+     * mewajibkan kalimat persetujuan disimpan apa adanya.
+     */
+    let isi = input.isi;
+    const rincian: string[] = [];
+    if (input.procedure_id) {
+      const [p] = await conn.execute<RowDataPacket[]>(
+        `SELECT kode, nama FROM medical_procedures WHERE id = ?`,
+        [input.procedure_id],
+      );
+      if (!p[0]) throw new Error("Tindakan tidak ditemukan.");
+      rincian.push(`Tindakan: ${String(p[0].nama)} (${String(p[0].kode)})`);
+    }
+    if (input.penjelasan_oleh) {
+      const [u] = await conn.execute<RowDataPacket[]>(
+        `SELECT nama FROM users WHERE id = ?`,
+        [input.penjelasan_oleh],
+      );
+      if (!u[0]) throw new Error("Pemberi penjelasan tidak ditemukan.");
+      rincian.push(`Penjelasan diberikan oleh: ${String(u[0].nama)}`);
+    }
+    if (rincian.length > 0) isi = `${isi}\n\n${rincian.join("\n")}`;
+
     const [res] = await conn.execute<ResultSetHeader>(
       `INSERT INTO consents
          (site_id, visit_id, patient_id, jenis, judul, isi, penjelasan_oleh,
@@ -137,7 +166,7 @@ export async function simpanConsent(
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         siteId, input.visit_id, Number(visit.patient_id), input.jenis,
-        input.judul, input.isi, input.penjelasan_oleh, input.procedure_id,
+        input.judul, isi, input.penjelasan_oleh, input.procedure_id,
         input.penandatangan, input.hubungan, input.saksi_nama ?? null,
         input.status, userId,
       ],

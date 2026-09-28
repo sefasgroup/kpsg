@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { tanggalHariIni } from "../tanggal";
 
 /**
  * Validasi pasien. NIK wajib dan divalidasi ketat — syarat SatuSehat
@@ -53,10 +54,15 @@ export const patientSchema = z.object({
   tanggal_lahir: z
     .string()
     .min(1, "Tanggal lahir wajib diisi")
-    .refine((v) => {
-      const d = new Date(v);
-      return !Number.isNaN(d.getTime()) && d <= new Date();
-    }, "Tanggal lahir tidak valid atau melebihi hari ini"),
+    /*
+     * Dibandingkan sebagai TEKS tanggal di zona klinik, bukan objek Date:
+     * `new Date("2026-09-28")` adalah tengah malam UTC = 07.00 WIB, sehingga
+     * bayi yang lahir hari ini ditolak bila didaftarkan sebelum pukul tujuh.
+     */
+    .refine(
+      (v) => /^\d{4}-\d{2}-\d{2}$/.test(v) && !Number.isNaN(new Date(v).getTime()) && v <= tanggalHariIni(),
+      "Tanggal lahir tidak valid atau melebihi hari ini",
+    ),
   jenis_kelamin: z.enum(["L", "P"], { message: "Pilih jenis kelamin" }),
   gol_darah: z.enum(["A", "B", "AB", "O"]).optional().or(z.literal("").transform(() => undefined)),
   agama: teksOpsional(30),

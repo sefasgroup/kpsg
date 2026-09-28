@@ -33,6 +33,8 @@ export function TombolAbsen({
       }
       toast.success(aksi === "masuk" ? "Jam masuk tercatat." : "Jam pulang tercatat.");
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }
@@ -76,6 +78,8 @@ export function UbahStatus({
       }
       toast.success("Status absensi diperbarui.");
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }

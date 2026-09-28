@@ -49,6 +49,8 @@ export function AjukanCuti({
       setForm({ ...form, user_id: "", alasan: "" });
       setLampiran(null);
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }
@@ -186,7 +188,16 @@ export function PutusanCuti({ id }: { id: number }) {
           : "Pengajuan ditolak.",
         { duration: 6000 },
       );
+      // Dokter ini semula dijadwalkan menggantikan rekannya pada hari cutinya.
+      if (setuju && hasil.data.penggantiDilepas > 0) {
+        toast(
+          `Perhatian: ${hasil.data.penggantiDilepas} penugasan sebagai dokter pengganti dilepas karena bentrok dengan cuti ini — carikan pengganti lain di menu Dokter Pengganti.`,
+          { duration: 10000, icon: "⚠️" },
+        );
+      }
       router.refresh();
+    } catch {
+      toast.error("Gagal menghubungi server. Periksa koneksi lalu coba lagi.");
     } finally {
       setProses(false);
     }

@@ -207,7 +207,10 @@ export default async function JadwalSayaPage() {
                                   digantikan {u.pengganti_nama}
                                 </span>
                               ) : null}
-                              {!u.digantikan_untuk && !u.pengganti_nama && u.status === "disetujui" ? (
+                              {/* Hanya halangan yang butuh pengganti — ganti jam & jadwal
+                                  tambahan justru dokter itu sendiri yang praktik. */}
+                              {!u.digantikan_untuk && !u.pengganti_nama && u.status === "disetujui" &&
+                              ["libur", "cuti", "izin", "sakit"].includes(u.jenis) ? (
                                 <span className="text-micro text-danger">tanpa pengganti</span>
                               ) : null}
                             </span>

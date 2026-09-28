@@ -154,7 +154,12 @@ export async function kunjunganUntukSurat(
        FROM visits v
        JOIN patients p ON p.id = v.patient_id
        JOIN polis pl   ON pl.id = v.poli_id
-      WHERE (v.doctor_id = ? OR v.substitute_doctor_id = ?)
+      /* Terlihat oleh dokter pemeriksa (pengisi asesmen) MAUPUN dokter
+         terjadwal/penggantinya — keduanya perlu menemukan kunjungannya.
+         Yang boleh MENERBITKAN ditentukan terbitkanSurat(). */
+      WHERE (EXISTS (SELECT 1 FROM medical_assessments ma
+                      WHERE ma.visit_id = v.id AND ma.doctor_id = ?)
+             OR v.doctor_id = ? OR v.substitute_doctor_id = ?)
         AND v.status <> 'batal'
         AND v.tanggal >= DATE_SUB(CURDATE(), INTERVAL ${hari} DAY)
         AND (? IS NULL OR v.site_id = ?)
@@ -162,7 +167,7 @@ export async function kunjunganUntukSurat(
       ORDER BY v.tanggal DESC, v.id DESC
       LIMIT ${limitAman(opts.limit, 50)}`,
     [
-      doctorId, doctorId, siteId, siteId,
+      doctorId, doctorId, doctorId, siteId, siteId,
       q, `%${q}%`, `${q}%`, `${q}%`,
     ],
   );
@@ -180,8 +185,9 @@ export async function terbitkanSurat(
 ): Promise<{ id: number; no_surat: string }> {
   return transaction(async (conn) => {
     const [visitRows] = await conn.execute<RowDataPacket[]>(
-      `SELECT id, doctor_id, substitute_doctor_id, status
-         FROM visits WHERE id = ? AND site_id = ?`,
+      `SELECT v.id, v.doctor_id, v.substitute_doctor_id, v.status,
+              (SELECT ma.doctor_id FROM medical_assessments ma WHERE ma.visit_id = v.id) AS pemeriksa
+         FROM visits v WHERE v.id = ? AND v.site_id = ?`,
       [input.visit_id, siteId],
     );
     const visit = visitRows[0];
@@ -189,10 +195,17 @@ export async function terbitkanSurat(
     if (visit.status === "batal") {
       throw new Error("Kunjungan ini dibatalkan — suratnya tidak bisa diterbitkan.");
     }
-    if (
-      Number(visit.doctor_id) !== doctorId &&
-      Number(visit.substitute_doctor_id ?? 0) !== doctorId
-    ) {
+    /*
+     * Yang berhak adalah dokter yang MEMERIKSA — pengisi asesmen, sama
+     * dengan dokterPemeriksa() di lib/doctor.ts. Dulu yang diperiksa hanya
+     * dokter terjadwal: dokter yang benar-benar memeriksa (tanpa ditetapkan
+     * sebagai pengganti) ditolak, sementara dokter terjadwal yang tidak
+     * pernah melihat pasiennya bisa menerbitkan surat atas nama dan SIP-nya.
+     */
+    const boleh = visit.pemeriksa !== null
+      ? Number(visit.pemeriksa) === doctorId
+      : Number(visit.doctor_id) === doctorId || Number(visit.substitute_doctor_id ?? 0) === doctorId;
+    if (!boleh) {
       throw new Error(
         "Surat hanya boleh diterbitkan oleh dokter yang menangani kunjungan ini.",
       );

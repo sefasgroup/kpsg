@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireSession } from "@/lib/auth";
+import { queryOne } from "@/lib/db";
 import { bolehKeCabang, setActiveSite } from "@/lib/session";
 import {
   hitungBelumDibaca,
@@ -78,8 +79,16 @@ export async function bukaNotifikasiAction(
     notif.site_id !== session.siteId &&
     bolehKeCabang(session, notif.site_id)
   ) {
-    await setActiveSite(notif.site_id);
-    pindahKe = notif.site_nama;
+    // Pemeriksaan yang sama dengan pilihCabangAction(): cabang yang sudah
+    // ditutup tidak boleh dihidupkan kembali lewat tautan notifikasi lama.
+    const aktif = await queryOne<import("mysql2").RowDataPacket & { id: number }>(
+      `SELECT id FROM sites WHERE id = ? AND is_active = 1 AND deleted_at IS NULL`,
+      [notif.site_id],
+    );
+    if (aktif) {
+      await setActiveSite(notif.site_id);
+      pindahKe = notif.site_nama;
+    }
   }
 
   revalidatePath("/", "layout");
