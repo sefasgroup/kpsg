@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut } from "lucide-react";
-import { NAV, ROLE_LABEL, type RoleCode } from "@/lib/rbac";
+import { NAV, ROLE_LABEL, menuAktif, type RoleCode } from "@/lib/rbac";
 import { inisial } from "@/lib/format";
 import { cn } from "@/lib/utils";
 
@@ -26,6 +26,7 @@ export function IsiNav({
   onPilih?: () => void;
 }) {
   const pathname = usePathname();
+  const aktif = menuAktif(role, pathname);
 
   return (
     <nav className="flex-1 overflow-y-auto py-2">
@@ -46,8 +47,7 @@ export function IsiNav({
           )}
 
           {section.items.map((item) => {
-            const active =
-              pathname === item.href || pathname.startsWith(item.href + "/");
+            const active = item.href === aktif?.href;
             return (
               <Link
                 key={item.href}

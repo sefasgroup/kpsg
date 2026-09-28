@@ -364,6 +364,26 @@ export const HOME_ROUTE: Record<RoleCode, string> = {
  * dengan pemisahan `*-labels.ts`.
  */
 
+/**
+ * Menu yang sedang aktif untuk sebuah pathname — SATU menu saja.
+ *
+ * Dipilih yang alamatnya paling spesifik (terpanjang) di antara yang cocok.
+ * Pencocokan awalan saja membuat "/lab" ikut aktif di "/lab/riwayat",
+ * "/farmasi" di "/farmasi/stok", "/kasir" di "/kasir/tutup", dan
+ * seterusnya — dua menu menyala bersamaan. Halaman turunan tanpa menu
+ * sendiri (mis. "/lab/12") tetap menyalakan menu induknya.
+ */
+export function menuAktif(role: RoleCode, pathname: string): NavItem | null {
+  let terbaik: NavItem | null = null;
+  for (const section of NAV[role]) {
+    for (const item of section.items) {
+      const cocok = pathname === item.href || pathname.startsWith(item.href + "/");
+      if (cocok && (!terbaik || item.href.length > terbaik.href.length)) terbaik = item;
+    }
+  }
+  return terbaik;
+}
+
 /** Daftar route yang boleh diakses sebuah role (dipakai middleware). */
 export function allowedPrefixes(role: RoleCode): string[] {
   return NAV[role].flatMap((s) => s.items.map((i) => i.href));

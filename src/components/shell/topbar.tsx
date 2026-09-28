@@ -4,7 +4,7 @@ import { useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Building2, CalendarDays, Lock } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { NAV, type RoleCode } from "@/lib/rbac";
+import { menuAktif, type RoleCode } from "@/lib/rbac";
 import { formatTanggalPendek } from "@/lib/format";
 import { pilihCabangAction } from "./site-actions";
 import { NotifBell, type NotifItem } from "./notif-bell";
@@ -16,14 +16,7 @@ export type SiteOption = { id: number; nama: string };
 /** Judul halaman diambil dari entri menu yang sedang aktif. */
 function useJudulHalaman(role: RoleCode): string {
   const pathname = usePathname();
-  for (const section of NAV[role]) {
-    for (const item of section.items) {
-      if (pathname === item.href || pathname.startsWith(item.href + "/")) {
-        return item.label;
-      }
-    }
-  }
-  return "Beranda";
+  return menuAktif(role, pathname)?.label ?? "Beranda";
 }
 
 export function Topbar({
