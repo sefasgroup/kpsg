@@ -1,0 +1,25 @@
+-- =====================================================================
+-- Indeks buku besar stok per cabang.
+--
+-- MASALAH YANG DITUTUP MIGRASI INI
+--
+-- `ix_sm_kartu (site_id, item_id, created_at)` sempurna untuk kartu stok
+-- satu item — yang memang pemakaian terpanasnya. Tetapi laporan yang
+-- menyapu SELURUH cabang pada satu rentang tanggal (`obatTeratas`, dan
+-- kelak laporan pemakaian lain) hanya bisa memakai kolom pertamanya:
+-- `item_id` tidak ada di kondisinya, sehingga `created_at` yang berada di
+-- posisi ketiga tidak bisa dipakai sebagai rentang sama sekali.
+--
+-- Akibatnya seluruh pergerakan cabang itu dipindai, lalu disaring
+-- tanggalnya satu per satu.
+--
+-- SEBERAPA MENDESAK
+--
+-- Belum. Pada basis data pengembangan saat ini `stock_movements` berisi
+-- 149 baris dan pemindaiannya 47 baris — tidak terasa oleh siapa pun.
+-- Indeks ini dipasang justru KARENA belum terasa: kartu stok bertambah
+-- ratusan baris setiap hari operasional dan tidak pernah menyusut, jadi
+-- satu-satunya waktu murah untuk memasangnya adalah sekarang.
+-- =====================================================================
+
+CREATE INDEX ix_sm_periode ON stock_movements (site_id, created_at);

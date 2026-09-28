@@ -1,0 +1,121 @@
+@import "tailwindcss";
+
+/* =====================================================================
+   GAMMA UI — Design tokens SIM Klinik Sahabat Gamma
+   Rujukan: docs/DESIGN-SYSTEM.md
+   Warna brand diekstrak langsung dari file logo KPSG.
+   JANGAN menulis hex mentah di komponen — selalu lewat token.
+   ===================================================================== */
+
+@theme {
+  /* --- Brand (turunan #1D9270, teal kuadran utama logo) --- */
+  --color-brand-50:  #edf7f3;
+  --color-brand-100: #d6eee5;
+  --color-brand-200: #addccb;
+  --color-brand-300: #7cc6ac;
+  --color-brand-400: #45ac8b;
+  --color-brand-500: #1d9270; /* PRIMARY */
+  --color-brand-600: #16785d;
+  --color-brand-700: #0e5a4d; /* teal gelap logo — dipakai untuk teks */
+  --color-brand-800: #0a4238;
+  --color-brand-900: #033007; /* forest wordmark logo */
+
+  /* --- Leaf (kuadran hijau daun logo) --- */
+  --color-leaf-50:  #eef8f0;
+  --color-leaf-400: #59cd84;
+  --color-leaf-500: #3b9e44;
+  --color-leaf-600: #2f8f3c;
+
+  /* --- Semantik --- */
+  --color-success:    #2f8f3c;
+  --color-success-bg: #edf7ee;
+  --color-warning:    #b45309;
+  --color-warning-bg: #fdf3e3;
+  --color-danger:     #c02626;
+  --color-danger-bg:  #fceded;
+  --color-info:       #1d6fa5;
+  --color-info-bg:    #e9f2fa;
+  /* violet = penanda RACIKAN di seluruh sistem */
+  --color-racikan:    #5b4bc4;
+  --color-racikan-bg: #efeefc;
+
+  /* --- Triase (standar nasional; selalu didampingi label teks) --- */
+  --color-triage-merah:  #c02626;
+  --color-triage-kuning: #c98a00;
+  --color-triage-hijau:  #2f8f3c;
+  --color-triage-hitam:  #262626;
+
+  /* --- Netral (ber-tint hijau tipis agar menyatu dengan brand) --- */
+  --color-canvas:        #f4f6f5;
+  --color-surface:       #ffffff;
+  --color-surface-alt:   #edf1ef;
+  --color-line:          #dce3e0;
+  --color-line-strong:   #c3cdc9;
+  --color-ink:           #101b17;
+  --color-ink-muted:     #5a6b64;
+  --color-ink-faint:     #8a9a94;
+
+  /* --- Tipografi --- */
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
+
+  --text-display: 1.5rem;   --text-display--line-height: 2rem;      --text-display--font-weight: 600;
+  --text-h1:      1.125rem; --text-h1--line-height: 1.625rem;       --text-h1--font-weight: 600;
+  --text-h2:      0.9375rem;--text-h2--line-height: 1.375rem;       --text-h2--font-weight: 600;
+  --text-body:    0.84375rem; --text-body--line-height: 1.25rem;
+  --text-label:   0.75rem;  --text-label--line-height: 1rem;        --text-label--font-weight: 500;
+  --text-meta:    0.71875rem; --text-meta--line-height: 1rem;
+  --text-micro:   0.65625rem; --text-micro--line-height: 0.875rem;  --text-micro--font-weight: 600;
+
+  /* --- Bentuk & elevasi (hanya 3 level — lihat DESIGN-SYSTEM §2.5) --- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+
+  --shadow-raised:  0 1px 2px rgb(16 27 23 / 0.06), 0 1px 3px rgb(16 27 23 / 0.04);
+  --shadow-overlay: 0 12px 32px rgb(16 27 23 / 0.14);
+}
+
+@layer base {
+  * {
+    border-color: var(--color-line);
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    font-size: var(--text-body);
+    line-height: var(--text-body--line-height);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Angka wajib sejajar antar baris tabel (stok, harga, TTV, hasil lab) */
+  table, .tabular, input[type="number"] {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* Focus ring wajib terlihat — banyak operator klinik bekerja dengan keyboard */
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  ::placeholder {
+    color: var(--color-ink-faint);
+  }
+}
+
+/* =====================================================================
+   PRESET CETAK (docs/DESIGN-SYSTEM.md §6)
+   Dipakai oleh <PrintSheet preset="..."> bersama react-to-print.
+   ===================================================================== */
+@media print {
+  body { background: #fff; }
+  .no-print { display: none !important; }
+}
