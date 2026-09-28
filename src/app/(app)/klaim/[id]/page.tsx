@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
 import { requireRole } from "@/lib/auth";
+import { cabangBacaDetail } from "@/lib/session";
 import { barisKlaim, getKlaim, pembayaranKlaim } from "@/lib/klaim";
 import { formatRupiah, formatTanggalPendek } from "@/lib/format";
 import { LABEL_STATUS_KLAIM } from "@/lib/validations/klaim";
@@ -29,7 +30,7 @@ export default async function DetailKlaimPage({
   const claimId = Number(id);
   if (!Number.isInteger(claimId) || claimId <= 0) notFound();
 
-  const klaim = await getKlaim(claimId, session.siteId);
+  const klaim = await getKlaim(claimId, cabangBacaDetail(session));
   if (!klaim) notFound();
 
   const [baris, bayar] = await Promise.all([

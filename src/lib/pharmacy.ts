@@ -984,7 +984,14 @@ export async function daftarStok(siteId: number | null): Promise<BarisStok[]> {
                 AND (? IS NULL OR b.site_id = ?)) AS kadaluarsa_terdekat
        FROM items i
        LEFT JOIN item_categories ic ON ic.id = i.category_id
-       LEFT JOIN item_stocks s ON s.item_id = i.id AND (? IS NULL OR s.site_id = ?)
+       /* Dijumlahkan per barang: tanpa cabang (Super Admin, "Semua Cabang")
+          join biasa menghasilkan satu baris per cabang tanpa label cabangnya.
+          Untuk satu cabang hasilnya sama — PK item_stocks (site_id, item_id). */
+       LEFT JOIN (SELECT item_id, SUM(qty_on_hand) AS qty_on_hand,
+                         SUM(qty_reserved) AS qty_reserved
+                    FROM item_stocks
+                   WHERE (? IS NULL OR site_id = ?)
+                   GROUP BY item_id) s ON s.item_id = i.id
       WHERE i.is_active = 1 AND i.deleted_at IS NULL
       ORDER BY (COALESCE(s.qty_on_hand,0) <= i.min_stock) DESC, i.nama`,
     [siteId, siteId, siteId, siteId],

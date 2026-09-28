@@ -5,6 +5,7 @@ import { ArrowLeft, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireRole } from "@/lib/auth";
+import { cabangBacaDetail } from "@/lib/session";
 import {
   alergiPasien,
   getBmhpKunjungan,
@@ -32,12 +33,12 @@ export default async function PengkajianDetailPage({
 
   // Pemeriksaan cabang dilakukan di query, bukan setelahnya — kunjungan
   // cabang lain tidak pernah sampai ke memori proses ini.
-  const visit = await getKunjunganUntukPerawat(visitId, session.siteId);
+  const visit = await getKunjunganUntukPerawat(visitId, cabangBacaDetail(session));
   if (!visit) notFound();
 
   const [pengkajian, bmhp, alergi] = await Promise.all([
     getPengkajian(visitId),
-    getBmhpKunjungan(visitId, session.siteId),
+    getBmhpKunjungan(visitId, cabangBacaDetail(session)),
     alergiPasien(visit.patient_id),
   ]);
 

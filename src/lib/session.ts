@@ -153,6 +153,19 @@ export async function clearSessionCookie() {
 }
 
 /**
+ * Batas cabang untuk MEMBUKA satu catatan lewat id-nya (halaman detail).
+ *
+ * Super Admin memantau lintas cabang: tautan notifikasi atau URL ke catatan
+ * cabang lain tidak boleh berakhir 404 hanya karena cabang aktifnya
+ * berbeda. Aman karena hanya dipakai untuk membaca — setiap penyimpanan
+ * ditolak oleh tolakSuperAdmin() di lib/auth.ts. Peran lain tetap
+ * dibatasi cabang aktifnya.
+ */
+export function cabangBacaDetail(session: SessionUser): number | null {
+  return session.role === "super_admin" ? null : session.siteId;
+}
+
+/**
  * Cabang efektif untuk seluruh query.
  * Sumbernya SELALU sesi, tidak pernah parameter request
  * (docs/DATABASE.md §3.7). Cabang yang diminta hanya dihormati bila

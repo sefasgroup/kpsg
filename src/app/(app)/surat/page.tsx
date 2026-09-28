@@ -29,15 +29,27 @@ const JENIS_TONE: Record<string, "warning" | "success" | "info" | "neutral"> = {
 
 export default async function SuratPage() {
   const session = await requireRole("dokter", "super_admin");
+  // Super Admin memantau seluruh surat, bukan "surat yang saya terbitkan",
+  // dan tidak menerbitkan surat (bukan dokter — lihat tolakSuperAdmin()).
+  const pemantau = session.role === "super_admin";
 
   const [klinik, riwayat, profil] = await Promise.all([
     kopKlinik(session.siteId),
-    daftarSurat(session.siteId, { doctorId: session.id, limit: 50 }),
+    daftarSurat(session.siteId, { doctorId: pemantau ? undefined : session.id, limit: 50 }),
     queryOne<import("mysql2").RowDataPacket & { gelar_depan: string | null; no_sip: string | null }>(
       `SELECT gelar_depan, no_sip FROM doctor_profiles WHERE user_id = ?`,
       [session.id],
     ),
   ]);
+
+  // Cetak ulang memakai kop cabang tempat surat terbit. Tanpa cabang aktif,
+  // satu kop untuk semua baris akan mencetak identitas klinik yang salah.
+  const kopCabang = new Map<number, typeof klinik>();
+  if (session.siteId == null) {
+    const ids = [...new Set(riwayat.map((r) => r.site_id))];
+    const kops = await Promise.all(ids.map((id) => kopKlinik(id)));
+    ids.forEach((id, i) => kopCabang.set(id, kops[i]));
+  }
 
   const hariIni = tanggalHariIni();
   const suratHariIni = riwayat.filter((r) => r.issued_at.slice(0, 10) === hariIni);
@@ -59,7 +71,12 @@ export default async function SuratPage() {
         <StatCard label="Rujukan" value={perJenis.rujukan ?? 0} sub="50 surat terakhir" />
       </div>
 
-      {!profil?.no_sip ? (
+      {pemantau ? (
+        <p className="rounded-lg border border-line bg-surface-alt px-4 py-2.5 text-body text-ink-muted">
+          Mode pemantauan: surat keterangan hanya diterbitkan oleh dokter yang
+          menangani kunjungan.
+        </p>
+      ) : !profil?.no_sip ? (
         <p className="rounded-lg border border-warning/25 bg-warning-bg px-4 py-2.5 text-body text-ink">
           Nomor SIP Anda belum terisi di profil, sehingga blok tanda tangan surat
           akan tercetak tanpa SIP. Minta Super Admin melengkapinya di menu
@@ -67,23 +84,25 @@ export default async function SuratPage() {
         </p>
       ) : null}
 
-      <FormSurat
-        klinik={klinik}
-        dokter={session.nama}
-        gelar={profil?.gelar_depan ?? null}
-        noSip={profil?.no_sip ?? null}
-        hariIni={hariIni}
-      />
+      {pemantau ? null : (
+        <FormSurat
+          klinik={klinik}
+          dokter={session.nama}
+          gelar={profil?.gelar_depan ?? null}
+          noSip={profil?.no_sip ?? null}
+          hariIni={hariIni}
+        />
+      )}
 
       <Card>
         <CardHeader>
-          <CardTitle icon={History}>Surat yang Saya Terbitkan</CardTitle>
+          <CardTitle icon={History}>{pemantau ? "Surat Terbit" : "Surat yang Saya Terbitkan"}</CardTitle>
           <span className="text-meta text-ink-faint">50 terakhir</span>
         </CardHeader>
 
         {riwayat.length === 0 ? (
           <p className="rounded-md border border-dashed border-line px-3 py-8 text-center text-meta text-ink-faint">
-            Anda belum pernah menerbitkan surat keterangan.
+            {pemantau ? "Belum ada surat keterangan yang terbit." : "Anda belum pernah menerbitkan surat keterangan."}
           </p>
         ) : (
           <div className="overflow-x-auto rounded-md border border-line">
@@ -120,7 +139,7 @@ export default async function SuratPage() {
                     <td className="px-3 py-1.5">
                       <CetakUlang
                         surat={{
-                          klinik,
+                          klinik: kopCabang.get(r.site_id) ?? klinik,
                           noSurat: r.no_surat,
                           jenis: r.jenis,
                           terbit: r.issued_at.slice(0, 10),

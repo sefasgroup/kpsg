@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { batalkanConsent, simpanConsent } from "@/lib/kepatuhan";
 import { consentSchema } from "@/lib/validations/kepatuhan";
 
@@ -24,6 +24,8 @@ export async function simpanConsentAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number }>> {
   const session = await requireRole(...ROLE);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -66,6 +68,8 @@ export async function batalkanConsentAction(
   alasan: string,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
   if (alasan.trim().length < 3) {

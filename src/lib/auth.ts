@@ -126,6 +126,27 @@ export async function requireRole(...roles: RoleCode[]): Promise<SessionUser> {
   return session;
 }
 
+export const PESAN_SUPER_ADMIN_LIHAT =
+  "Super Admin hanya dapat melihat data operasional. Perubahan dilakukan oleh petugas cabang.";
+
+/**
+ * Super Admin boleh membuka seluruh modul operasional untuk PEMANTAUAN,
+ * tetapi tidak mengerjakannya (CLAUDE.md §2.1 — tidak ada peran ganda).
+ * Tanpa penjaga ini resep, pembayaran, atau shift kasir akan tercatat atas
+ * nama akun teknis, dan membayar tagihan diam-diam membuka shift kas baru.
+ *
+ * Dipanggil di awal setiap Server Action yang MENGUBAH data operasional,
+ * sesudah requireRole(). Aksi baca (pencarian) tidak memakainya. Master
+ * data, supplier, dan profil cabang tetap wewenang Super Admin.
+ */
+export function tolakSuperAdmin(
+  session: SessionUser,
+): { ok: false; error: string } | null {
+  return session.role === "super_admin"
+    ? { ok: false, error: PESAN_SUPER_ADMIN_LIHAT }
+    : null;
+}
+
 /**
  * Menulis jejak audit (CLAUDE.md — pemisahan tugas hanya bermakna bila
  * setiap tindakan bisa ditelusuri). Wajib dipanggil pada setiap operasi

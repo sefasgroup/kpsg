@@ -18,6 +18,7 @@ import type { SuratInput } from "./validations/dokumen";
 
 export type SuratRow = RowDataPacket & {
   id: number;
+  site_id: number;
   no_surat: string;
   jenis: string;
   isi: Record<string, unknown> | string;
@@ -51,7 +52,7 @@ export type SuratRow = RowDataPacket & {
  * konfigurasi driver yang bisa berubah.
  */
 const SELECT_SURAT = `
-  SELECT mc.id, mc.no_surat, mc.jenis, mc.isi, mc.visit_id,
+  SELECT mc.id, mc.site_id, mc.no_surat, mc.jenis, mc.isi, mc.visit_id,
          DATE_FORMAT(mc.issued_at, '%Y-%m-%d %H:%i:%s') AS issued_at,
          v.tanggal, p.no_rm, p.nik, p.nama, p.tanggal_lahir, p.jenis_kelamin,
          p.alamat, p.pekerjaan,

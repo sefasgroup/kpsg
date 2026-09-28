@@ -100,13 +100,15 @@ export default async function RiwayatPasienPage({
     );
   }
 
-  const [pasien, kunjungan, alergi, lab, klinik] = await Promise.all([
+  const [pasien, kunjungan, alergi, lab] = await Promise.all([
     ringkasanPasien(pasienId),
     riwayatKunjungan(pasienId, 50),
     alergiPasien(pasienId),
     riwayatLab(pasienId, 200),
-    kopKlinik(session.siteId),
   ]);
+  // Tanpa cabang aktif (Super Admin, "Semua Cabang") kop memakai cabang
+  // tempat pasien terdaftar — bukan cabang ber-id terkecil.
+  const klinik = await kopKlinik(session.siteId ?? pasien?.site_id ?? null);
 
   if (!pasien) {
     return (

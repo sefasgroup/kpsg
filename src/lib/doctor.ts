@@ -200,15 +200,17 @@ export async function selesaiDokterHariIni(
   siteId: number | null,
   doctorId: number,
   tanggal: string,
+  /** Super Admin: seluruh dokter, sama seperti worklistDokter(). */
+  lihatSemua = false,
 ): Promise<WorklistDokter[]> {
   return query<WorklistDokter>(
     `${SELECT_WORKLIST}
       WHERE v.tanggal = ?
         AND (? IS NULL OR v.site_id = ?)
         AND ma.id IS NOT NULL AND ma.status = 'final'
-        AND (ma.doctor_id = ? OR v.doctor_id = ?)
+        AND (? OR ma.doctor_id = ? OR v.doctor_id = ?)
       ORDER BY q.nomor`,
-    [tanggal, siteId, siteId, doctorId, doctorId],
+    [tanggal, siteId, siteId, lihatSemua ? 1 : 0, doctorId, doctorId],
   );
 }
 

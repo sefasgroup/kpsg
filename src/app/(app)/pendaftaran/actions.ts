@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { buatPasien, cariPasien, getPasienByNik, type PatientRow } from "@/lib/patients";
 import { batalkanKunjungan, daftarkanKunjungan } from "@/lib/visits";
 import { patientSchema, visitSchema } from "@/lib/validations/patient";
@@ -32,6 +32,8 @@ export async function buatPasienAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number; no_rm: string }>> {
   const session = await requireRole(...ROLE_PENDAFTARAN);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = patientSchema.safeParse(raw);
   if (!parsed.success) {
@@ -84,6 +86,8 @@ export async function daftarkanKunjunganAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number; no_visit: string; antrean: string }>> {
   const session = await requireRole(...ROLE_PENDAFTARAN);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = visitSchema.safeParse(raw);
   if (!parsed.success) {
@@ -135,6 +139,8 @@ export async function batalkanKunjunganAction(
   alasan: string,
 ): Promise<ActionResult<{ noVisit: string; pasien: string }>> {
   const session = await requireRole(...ROLE_PENDAFTARAN);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) {
     return { ok: false, error: "Super Admin harus memilih cabang terlebih dahulu." };

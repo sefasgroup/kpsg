@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import {
   ajukanKlaim,
   batalkanKlaim,
@@ -45,6 +45,8 @@ export async function buatKlaimAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number; noKlaim: string; jumlahBaris: number; total: number }>> {
   const { session, siteId } = await sesiCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
   const parsed = klaimBaruSchema.safeParse(raw);
@@ -70,6 +72,8 @@ export async function ajukanKlaimAction(
   claimId: number,
 ): Promise<ActionResult<{ noKlaim: string; jatuhTempo: string }>> {
   const { session, siteId } = await sesiCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
   try {
@@ -90,6 +94,8 @@ export async function verifikasiKlaimAction(
   raw: unknown,
 ): Promise<ActionResult<{ totalDisetujui: number; dikoreksi: number }>> {
   const { session, siteId } = await sesiCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
   const parsed = verifikasiKlaimSchema.safeParse(raw);
@@ -116,6 +122,8 @@ export async function bayarKlaimAction(
   raw: unknown,
 ): Promise<ActionResult<{ dibayar: number; sisa: number; lunas: boolean }>> {
   const { session, siteId } = await sesiCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
   const parsed = bayarKlaimSchema.safeParse(raw);
@@ -143,6 +151,8 @@ export async function batalkanKlaimAction(
   alasan: string,
 ): Promise<ActionResult<{ noKlaim: string; barisDilepas: number }>> {
   const { session, siteId } = await sesiCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
   if (alasan.trim().length < 3) {
     return { ok: false, error: "Alasan pembatalan wajib diisi." };
@@ -164,6 +174,8 @@ export async function batalkanKlaimAction(
 
 export async function hapusKlaimDraftAction(claimId: number): Promise<ActionResult> {
   const { session, siteId } = await sesiCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
   try {

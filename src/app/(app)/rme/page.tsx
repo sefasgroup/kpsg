@@ -113,7 +113,7 @@ export default async function RmePage() {
 
   const [menunggu, selesai, cabangLain, tertunda] = await Promise.all([
     worklistDokter(session.siteId, session.id, hariIni, lihatSemua),
-    selesaiDokterHariIni(session.siteId, session.id, hariIni),
+    selesaiDokterHariIni(session.siteId, session.id, hariIni, lihatSemua),
     pasienDiCabangLain(session.siteId, session.id, hariIni),
     tertundaDokter(session.siteId, session.id, hariIni, lihatSemua),
   ]);

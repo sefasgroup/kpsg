@@ -68,7 +68,12 @@ export async function cariItemStok(
     `SELECT i.id, i.kode, i.nama, i.tipe, i.satuan_dasar, i.hpp, i.harga_jual,
             GREATEST(0, COALESCE(s.qty_on_hand, 0) - COALESCE(s.qty_reserved, 0)) AS stok
        FROM items i
-       LEFT JOIN item_stocks s ON s.item_id = i.id AND (? IS NULL OR s.site_id = ?)
+       /* Dijumlahkan per barang — lihat daftarStok() di lib/pharmacy.ts. */
+       LEFT JOIN (SELECT item_id, SUM(qty_on_hand) AS qty_on_hand,
+                         SUM(qty_reserved) AS qty_reserved
+                    FROM item_stocks
+                   WHERE (? IS NULL OR site_id = ?)
+                   GROUP BY item_id) s ON s.item_id = i.id
       WHERE i.is_active = 1 AND i.deleted_at IS NULL
         AND (i.nama LIKE ? OR i.kode LIKE ? OR i.nama_generik LIKE ?)
       ORDER BY (i.kode = ?) DESC, i.nama
@@ -874,7 +879,12 @@ export async function ringkasanInventori(
             SUM(COALESCE(s.qty_on_hand,0) <= 0) AS habis,
             SUM(COALESCE(s.qty_on_hand,0) > 0 AND COALESCE(s.qty_on_hand,0) <= i.min_stock) AS menipis
        FROM items i
-       LEFT JOIN item_stocks s ON s.item_id = i.id AND (? IS NULL OR s.site_id = ?)
+       /* Dijumlahkan per barang supaya "habis"/"menipis" dihitung per barang,
+          bukan per pasangan barang × cabang saat tanpa cabang. */
+       LEFT JOIN (SELECT item_id, SUM(qty_on_hand) AS qty_on_hand
+                    FROM item_stocks
+                   WHERE (? IS NULL OR site_id = ?)
+                   GROUP BY item_id) s ON s.item_id = i.id
       WHERE i.is_active = 1 AND i.deleted_at IS NULL`,
     [siteId, siteId],
   );

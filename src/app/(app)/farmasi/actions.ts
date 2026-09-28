@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import {
   batalkanTerimaResep, batalkanValidasiResep, serahkanResep, terimaResep,
   validasiResep,
@@ -18,6 +18,8 @@ export async function terimaResepAction(
   prescriptionId: number,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_FARMASI);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -54,6 +56,8 @@ export async function batalkanTerimaResepAction(
   alasan: string,
 ): Promise<ActionResult<{ no_resep: string }>> {
   const session = await requireRole(...ROLE_FARMASI);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -98,6 +102,8 @@ export async function validasiResepAction(
   prescriptionId: number,
 ): Promise<ActionResult<{ total: number }>> {
   const session = await requireRole(...ROLE_FARMASI);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -134,6 +140,8 @@ export async function serahkanResepAction(
   prescriptionId: number,
 ): Promise<ActionResult<{ jumlahItem: number }>> {
   const session = await requireRole(...ROLE_FARMASI);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -176,6 +184,8 @@ export async function batalkanValidasiAction(
   prescriptionId: number,
 ): Promise<ActionResult<{ noResep: string }>> {
   const session = await requireRole(...ROLE_FARMASI);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 

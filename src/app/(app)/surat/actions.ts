@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { kunjunganUntukSurat, terbitkanSurat, type KunjunganSurat } from "@/lib/dokumen";
 import { suratSchema } from "@/lib/validations/dokumen";
 
@@ -21,6 +21,8 @@ export async function terbitkanSuratAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number; no_surat: string }>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!session.siteId) {
     return { ok: false, error: "Pilih cabang terlebih dahulu." };
   }

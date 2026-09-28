@@ -5,6 +5,7 @@ import { ArrowLeft, Zap } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireRole } from "@/lib/auth";
+import { cabangBacaDetail } from "@/lib/session";
 import { queryOne } from "@/lib/db";
 import { getOrderLab, parameterOrder } from "@/lib/lab";
 import { formatJam, hitungUmur } from "@/lib/format";
@@ -32,7 +33,7 @@ export default async function InputHasilPage({
   const orderId = Number(id);
   if (!Number.isInteger(orderId) || orderId <= 0) notFound();
 
-  const order = await getOrderLab(orderId, session.siteId);
+  const order = await getOrderLab(orderId, cabangBacaDetail(session));
   if (!order) notFound();
 
   const [parameter, site] = await Promise.all([

@@ -5,6 +5,7 @@ import { ArrowLeft, TriangleAlert } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireRole } from "@/lib/auth";
+import { cabangBacaDetail } from "@/lib/session";
 import { queryOne } from "@/lib/db";
 import { getResepFarmasi, itemPaten, racikanResep } from "@/lib/pharmacy";
 import { formatJam, hitungUmur } from "@/lib/format";
@@ -23,7 +24,7 @@ export default async function PenyiapanPage({
   const rxId = Number(id);
   if (!Number.isInteger(rxId) || rxId <= 0) notFound();
 
-  const resep = await getResepFarmasi(rxId, session.siteId);
+  const resep = await getResepFarmasi(rxId, cabangBacaDetail(session));
   if (!resep) notFound();
 
   const [paten, racikan, site, tagihan] = await Promise.all([

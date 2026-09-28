@@ -15,6 +15,8 @@ import { limitAman, query, queryOne } from "./db";
 
 export type RingkasanPasien = RowDataPacket & {
   id: number;
+  /** Cabang tempat pasien terdaftar — dipakai untuk kop bila tanpa cabang aktif. */
+  site_id: number;
   no_rm: string;
   nik: string;
   nama: string;
@@ -33,7 +35,7 @@ export async function ringkasanPasien(
   patientId: number,
 ): Promise<RingkasanPasien | null> {
   return queryOne<RingkasanPasien>(
-    `SELECT p.id, p.no_rm, p.nik, p.nama, p.tanggal_lahir, p.jenis_kelamin,
+    `SELECT p.id, p.site_id, p.no_rm, p.nik, p.nama, p.tanggal_lahir, p.jenis_kelamin,
             p.alamat, p.telepon, p.gol_darah, p.jenis_pasien,
             (SELECT GROUP_CONCAT(a.nama_alergen SEPARATOR ', ')
                FROM patient_allergies a

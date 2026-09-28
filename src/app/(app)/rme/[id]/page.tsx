@@ -8,6 +8,7 @@ import {
 import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge, TriaseBadge } from "@/components/ui/badge";
 import { requireRole } from "@/lib/auth";
+import { cabangBacaDetail } from "@/lib/session";
 import { queryOne } from "@/lib/db";
 import {
   bacaStatusLokalis, getAsesmen, getDiagnosa, getPemeriksaan, getTindakan,
@@ -102,7 +103,7 @@ export default async function PemeriksaanPage({
   const visitId = Number(id);
   if (!Number.isInteger(visitId) || visitId <= 0) notFound();
 
-  const visit = await getPemeriksaan(visitId, session.siteId);
+  const visit = await getPemeriksaan(visitId, cabangBacaDetail(session));
   if (!visit) notFound();
 
   const [

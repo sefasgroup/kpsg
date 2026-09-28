@@ -1,4 +1,5 @@
 import type { RowDataPacket } from "mysql2";
+import { PitaPemantauan } from "@/components/shell/pita-pemantauan";
 import { Sidebar } from "@/components/shell/sidebar";
 import { Topbar } from "@/components/shell/topbar";
 import { requireSession } from "@/lib/auth";
@@ -89,6 +90,7 @@ export default async function AppLayout({
           375px berarti seperdelapan lebarnya habis untuk ruang kosong.
         */}
         <main className="flex-1 overflow-y-auto p-3 sm:p-4 lg:p-5">
+          {lintasCabang ? <PitaPemantauan semuaCabang={session.siteId == null} /> : null}
           {children}
         </main>
       </div>

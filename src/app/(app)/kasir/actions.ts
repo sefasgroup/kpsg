@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { queryOne } from "@/lib/db";
 import {
   batalkanPembayaran,
@@ -32,6 +32,8 @@ export async function bayarAction(
   raw: unknown,
 ): Promise<ActionResult<{ total: number; kembalian: number; noInvoice: string }>> {
   const session = await requireRole(...ROLE_KASIR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -82,6 +84,8 @@ export async function bayarAction(
 
 export async function bukaShiftAction(kasAwal: number): Promise<ActionResult> {
   const session = await requireRole(...ROLE_KASIR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -109,6 +113,8 @@ export async function tutupShiftAction(
   raw: unknown,
 ): Promise<ActionResult<{ kasSistem: number; selisih: number }>> {
   const session = await requireRole(...ROLE_KASIR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -156,6 +162,8 @@ export async function batalkanPembayaranAction(
   alasan: string,
 ): Promise<ActionResult<{ noInvoice: string; total: number }>> {
   const session = await requireRole(...ROLE_KASIR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 

@@ -80,6 +80,79 @@ export const NAV: Record<RoleCode, NavSection[]> = {
         { label: "Pengaturan", href: "/pengaturan", icon: Settings },
       ],
     },
+    /*
+     * Menu operasional di bawah ini untuk PEMANTAUAN lintas cabang — Super
+     * Admin melihat, tidak mengerjakan. Aksi yang mengubah pelayanan, uang,
+     * stok, HR, klaim, dan IKP ditolak di server lewat `tolakSuperAdmin()`
+     * (lib/auth.ts): pemisahan tugas §2.1 tetap berlaku, dan catatan klinis
+     * atau kas tidak boleh tercatat atas nama akun teknis.
+     *
+     * "Jadwal Saya" sengaja tidak ikut — isinya jadwal pribadi dokter yang
+     * login, dan jadwal seluruh dokter sudah ada di Jadwal Praktik.
+     */
+    {
+      title: "Pendaftaran",
+      items: [
+        { label: "Pendaftaran Pasien", href: "/pendaftaran", icon: UserPlus },
+        { label: "Antrean", href: "/antrean", icon: ListOrdered },
+      ],
+    },
+    {
+      title: "Klinis",
+      items: [
+        { label: "Pengkajian Perawat", href: "/pengkajian", icon: Activity },
+        { label: "Pemakaian BMHP", href: "/bmhp", icon: Syringe },
+        { label: "Pemeriksaan Dokter", href: "/rme", icon: Stethoscope },
+        { label: "Riwayat Pasien", href: "/riwayat-pasien", icon: FileSearch },
+        { label: "Surat Keterangan", href: "/surat", icon: ScrollText },
+      ],
+    },
+    {
+      title: "Laboratorium",
+      items: [
+        { label: "Order Lab", href: "/lab", icon: Microscope },
+        { label: "Riwayat Lab", href: "/lab/riwayat", icon: History },
+      ],
+    },
+    {
+      title: "Farmasi",
+      items: [
+        { label: "Resep Masuk", href: "/farmasi", icon: ClipboardList },
+        { label: "Stok Obat & BMHP", href: "/farmasi/stok", icon: Package },
+        { label: "Penerimaan", href: "/farmasi/penerimaan", icon: PackagePlus },
+        { label: "Pengeluaran", href: "/farmasi/pengeluaran", icon: PackageMinus },
+        { label: "Stock Opname", href: "/farmasi/opname", icon: ClipboardCheck },
+        { label: "Monitoring Kadaluarsa", href: "/farmasi/kadaluarsa", icon: AlertTriangle },
+        { label: "SIPNAP", href: "/farmasi/sipnap", icon: FileSpreadsheet },
+      ],
+    },
+    {
+      title: "Kasir",
+      items: [
+        { label: "Tagihan Menunggu", href: "/kasir", icon: Receipt },
+        { label: "Riwayat Transaksi", href: "/kasir/riwayat", icon: History },
+        { label: "Shift Kasir", href: "/kasir/tutup", icon: Wallet },
+      ],
+    },
+    {
+      title: "SDM",
+      items: [
+        { label: "Jadwal Praktik", href: "/hr/jadwal", icon: CalendarDays },
+        { label: "Dokter Pengganti", href: "/hr/pengganti", icon: CalendarClock },
+        { label: "Absensi", href: "/hr/absensi", icon: ClipboardCheck },
+        { label: "Cuti & Izin", href: "/hr/cuti", icon: FileBadge },
+      ],
+    },
+    {
+      title: "Klaim, Mutu & Laporan",
+      items: [
+        { label: "Klaim & Piutang", href: "/klaim", icon: HandCoins },
+        { label: "Insiden Keselamatan", href: "/mutu/ikp", icon: ShieldAlert },
+        { label: "Laporan Cabang", href: "/laporan", icon: Activity },
+        { label: "Laporan LB1", href: "/laporan/lb1", icon: FileSpreadsheet },
+        { label: "Profil Cabang", href: "/profil-cabang", icon: Building2 },
+      ],
+    },
   ],
 
   admin_cabang: [
@@ -252,6 +325,18 @@ export const NAV: Record<RoleCode, NavSection[]> = {
     },
   ],
 };
+
+/**
+ * Route yang benar-benar DIKELOLA Super Admin (boleh mengubah data).
+ * Di luar daftar ini Super Admin hanya memantau — lihat PitaPemantauan
+ * dan tolakSuperAdmin(). Profil Cabang ikut karena isinya konfigurasi
+ * cabang, bukan pekerjaan operasional.
+ */
+export const RUTE_KELOLA_SUPER_ADMIN: string[] = [
+  ...NAV.super_admin.slice(0, 3).flatMap((s) => s.items.map((i) => i.href)),
+  "/profil-cabang",
+  "/akun",
+];
 
 /** Halaman awal setiap role setelah login. */
 export const HOME_ROUTE: Record<RoleCode, string> = {

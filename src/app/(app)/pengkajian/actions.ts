@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import {
   alergiPasien, cariBmhp, simpanPengkajian, tambahAlergi,
   type AlergiRow, type ItemBmhp,
@@ -41,6 +41,8 @@ export async function tambahAlergiAction(
   raw: unknown,
 ): Promise<ActionResult<AlergiRow[]>> {
   const session = await requireRole(...ROLE_PERAWAT);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = alergiSchema.safeParse(raw);
   if (!parsed.success) {
@@ -89,6 +91,8 @@ export async function simpanPengkajianAction(
   raw: unknown,
 ): Promise<ActionResult<{ totalBmhp: number }>> {
   const session = await requireRole(...ROLE_PERAWAT);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = nurseAssessmentSchemaFinal.safeParse(raw);
   if (!parsed.success) {

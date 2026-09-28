@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import {
   batalkanOrderLab, buatOrderLab, cariPanel, simpanHasilLab,
 } from "@/lib/lab";
@@ -18,6 +18,8 @@ export async function simpanHasilAction(
   raw: unknown,
 ): Promise<ActionResult<{ jumlahKritis: number; selesai: boolean }>> {
   const session = await requireRole(...ROLE_LAB);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -74,6 +76,8 @@ export async function batalkanOrderAction(
   alasan: string,
 ): Promise<ActionResult<{ noOrder: string; statusKunjungan: string }>> {
   const session = await requireRole(...ROLE_LAB);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -127,6 +131,8 @@ export async function orderApsAction(
   raw: unknown,
 ): Promise<ActionResult<{ noOrder: string; total: number }>> {
   const session = await requireRole(...ROLE_LAB);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 

@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { BerkasDitolak, hapusBerkas, simpanBerkas } from "@/lib/berkas";
 import {
   ajukanCuti,
@@ -29,6 +29,8 @@ function gagal(err: unknown, fallback: string): ActionResult<never> {
 
 export async function tambahJadwalAction(raw: unknown): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -56,6 +58,8 @@ export async function tambahJadwalAction(raw: unknown): Promise<ActionResult> {
 
 export async function hapusJadwalAction(id: number): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -73,6 +77,8 @@ export async function hapusJadwalAction(id: number): Promise<ActionResult> {
 
 export async function tambahPengecualianAction(raw: unknown): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -104,6 +110,8 @@ export async function putuskanPengecualianAction(
   setuju: boolean,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -136,6 +144,8 @@ export async function putuskanPengecualianAction(
  */
 export async function ajukanCutiAction(form: FormData): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -185,6 +195,8 @@ export async function putuskanCutiAction(
   catatan?: string,
 ): Promise<ActionResult<{ pengecualianDibuat: number }>> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -214,6 +226,8 @@ export async function absenAction(
   aksi: "masuk" | "pulang",
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -239,6 +253,8 @@ export async function setStatusAbsensiAction(
   status: string,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_HR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 

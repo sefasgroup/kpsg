@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import {
   batalkanOpname,
   buatOpname,
@@ -96,6 +96,8 @@ export async function catatPenerimaanAction(
   raw: unknown,
 ): Promise<ActionResult<HasilPenerimaan>> {
   const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   const parsed = penerimaanSchema.safeParse(raw);
@@ -129,6 +131,8 @@ export async function catatPengeluaranAction(
   raw: unknown,
 ): Promise<ActionResult<{ nama: string; sisa: number }>> {
   const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   const parsed = pengeluaranSchema.safeParse(raw);
@@ -157,6 +161,8 @@ export async function buatOpnameAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number; no_opname: string; jumlahItem: number }>> {
   const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   const parsed = opnameBaruSchema.safeParse(raw);
@@ -181,7 +187,9 @@ export async function buatOpnameAction(
 export async function simpanHitunganAction(
   raw: unknown,
 ): Promise<ActionResult> {
-  const { siteId } = await sesiDenganCabang();
+  const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   const parsed = opnameHitungSchema.safeParse(raw);
@@ -200,6 +208,8 @@ export async function finalkanOpnameAction(
   opnameId: number,
 ): Promise<ActionResult<{ no_opname: string; dikoreksi: number; naik: number; turun: number }>> {
   const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   try {
@@ -223,6 +233,8 @@ export async function batalkanOpnameAction(
   opnameId: number,
 ): Promise<ActionResult<{ no_opname: string }>> {
   const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   try {
@@ -247,6 +259,8 @@ export async function tarikBatchAction(
   raw: unknown,
 ): Promise<ActionResult<{ nama: string; sisaBatch: number; sisaStok: number }>> {
   const { session, siteId } = await sesiDenganCabang();
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   if (!siteId) return { ok: false, error: TANPA_CABANG };
 
   const parsed = tarikBatchSchema.safeParse(raw);

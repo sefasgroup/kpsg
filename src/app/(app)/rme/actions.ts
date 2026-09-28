@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { bolehKeCabang, setActiveSite } from "@/lib/session";
 import { cariIcd10, cariTindakan, simpanAsesmen } from "@/lib/doctor";
 import { batalkanResep, cariObat, simpanResep, type ObatOption } from "@/lib/prescription";
@@ -76,6 +76,8 @@ export async function tambahAlergiDokterAction(
   raw: unknown,
 ): Promise<{ ok: true; data: AlergiRow[] } | { ok: false; error: string }> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = alergiSchema.safeParse(raw);
   if (!parsed.success) {
@@ -132,6 +134,8 @@ export async function unggahDokumenAction(
   form: FormData,
 ): Promise<ActionResult<HasilUnggah>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const visit = await kunjunganDiCabang(visitId, session.siteId);
   if (!visit) return { ok: false, error: "Kunjungan tidak ditemukan di cabang ini." };
@@ -171,6 +175,8 @@ export async function ubahKeteranganDokumenAction(
   keterangan: string,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const visit = await kunjunganDiCabang(visitId, session.siteId);
   if (!visit) return { ok: false, error: "Kunjungan tidak ditemukan di cabang ini." };
@@ -189,6 +195,8 @@ export async function hapusDokumenAction(
   id: number,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const visit = await kunjunganDiCabang(visitId, session.siteId);
   if (!visit) return { ok: false, error: "Kunjungan tidak ditemukan di cabang ini." };
@@ -206,6 +214,8 @@ export async function simpanAsesmenAction(
   raw: unknown,
 ): Promise<ActionResult<{ final: boolean }>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = asesmenSchema.safeParse(raw);
   if (!parsed.success) {
@@ -244,6 +254,8 @@ export async function simpanResepAction(
   raw: unknown,
 ): Promise<ActionResult<{ noResep: string }>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = resepSchema.safeParse(raw);
   if (!parsed.success) {
@@ -286,6 +298,8 @@ export async function batalkanResepAction(
   alasan: string,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
   if (alasan.trim().length < 3) {
@@ -321,6 +335,8 @@ export async function orderLabAction(
   raw: unknown,
 ): Promise<ActionResult<{ noOrder: string; total: number }>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
 
   const parsed = orderLabSchema.safeParse(raw);
   if (!parsed.success) {
@@ -371,6 +387,8 @@ export async function batalkanOrderLabAction(
   alasan: string,
 ): Promise<ActionResult<{ noOrder: string; statusKunjungan: string }>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -421,6 +439,8 @@ export async function ubahSifatHasilAction(
   sifat: "ditunggu" | "menyusul",
 ): Promise<ActionResult<{ noOrder: string; statusKunjungan: string }>> {
   const session = await requireRole(...ROLE_DOKTER);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 

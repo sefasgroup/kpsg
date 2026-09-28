@@ -1,7 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { auditLog, requireRole } from "@/lib/auth";
+import { auditLog, requireRole, tolakSuperAdmin } from "@/lib/auth";
 import { laporkanIkp, tindakLanjutIkp } from "@/lib/kepatuhan";
 import { ikpSchema, tindakLanjutIkpSchema } from "@/lib/validations/kepatuhan";
 
@@ -41,6 +41,8 @@ export async function laporkanIkpAction(
   raw: unknown,
 ): Promise<ActionResult<{ id: number; noIkp: string }>> {
   const session = await requireRole(...ROLE_LAPOR);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 
@@ -79,6 +81,8 @@ export async function tindakLanjutIkpAction(
   raw: unknown,
 ): Promise<ActionResult> {
   const session = await requireRole(...ROLE_TINDAK);
+  const tolak = tolakSuperAdmin(session);
+  if (tolak) return tolak;
   const siteId = session.siteId;
   if (!siteId) return { ok: false, error: "Super Admin harus memilih cabang dahulu." };
 

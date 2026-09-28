@@ -28,6 +28,10 @@ export default async function TutupKasirPage() {
   const session = await requireRole("kasir", "super_admin");
   const siteId = session.siteId;
 
+  // Shift terikat pada kasir yang login. Super Admin tidak punya shift —
+  // ia memantau shift seluruh kasir, di cabang terpilih atau semua cabang.
+  if (session.role === "super_admin") return <PantauShift siteId={siteId} />;
+
   if (!siteId) {
     return (
       <EmptyState
@@ -199,5 +203,113 @@ export default async function TutupKasirPage() {
         )}
       </Card>
     </div>
+  );
+}
+
+type BarisShift = import("mysql2").RowDataPacket & {
+  id: number;
+  cabang: string;
+  kasir: string;
+  dibuka_at: string;
+  ditutup_at: string | null;
+  kas_awal: string;
+  kas_akhir_sistem: string;
+  kas_akhir_fisik: string | null;
+  selisih: string | null;
+  diterima: string;
+  transaksi: number;
+};
+
+/** Pemantauan shift seluruh kasir — hanya baca (Super Admin). */
+async function PantauShift({ siteId }: { siteId: number | null }) {
+  const baris = await query<BarisShift>(
+    `SELECT cs.id, st.nama AS cabang, u.nama AS kasir, cs.dibuka_at, cs.ditutup_at,
+            cs.kas_awal, cs.kas_akhir_sistem, cs.kas_akhir_fisik, cs.selisih,
+            (SELECT COALESCE(SUM(bt.dibayar - bt.kembalian), 0)
+               FROM billing_transactions bt
+              WHERE bt.shift_id = cs.id AND bt.status = 'lunas') AS diterima,
+            (SELECT COUNT(*) FROM billing_transactions bt
+              WHERE bt.shift_id = cs.id AND bt.status = 'lunas') AS transaksi
+       FROM cashier_shifts cs
+       JOIN users u  ON u.id = cs.cashier_id
+       JOIN sites st ON st.id = cs.site_id
+      WHERE (? IS NULL OR cs.site_id = ?)
+      ORDER BY (cs.ditutup_at IS NULL) DESC, cs.id DESC
+      LIMIT 50`,
+    [siteId, siteId],
+  );
+
+  return (
+    <Card>
+      <CardHeader>
+        <CardTitle icon={Wallet}>Shift Kasir</CardTitle>
+        <span className="text-meta text-ink-faint">
+          {siteId ? "Cabang aktif" : "Semua cabang"} · 50 terakhir
+        </span>
+      </CardHeader>
+
+      {baris.length === 0 ? (
+        <p className="rounded-md border border-dashed border-line px-3 py-8 text-center text-meta text-ink-faint">
+          Belum ada shift kasir.
+        </p>
+      ) : (
+        <div className="overflow-x-auto rounded-md border border-line">
+          <table className="w-full border-collapse text-body">
+            <thead>
+              <tr className="bg-surface-alt">
+                {["Status", "Cabang", "Kasir", "Dibuka", "Ditutup", "Trx", "Diterima", "Kas Awal", "Seharusnya", "Fisik", "Selisih"].map((h) => (
+                  <th
+                    key={h}
+                    className="border-b border-line px-3 py-2 text-left text-label font-medium whitespace-nowrap text-ink-muted"
+                  >
+                    {h}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {baris.map((b) => {
+                const selisih = b.selisih == null ? null : Number(b.selisih);
+                return (
+                  <tr key={b.id} className="border-b border-line last:border-b-0">
+                    <td className="px-3 py-1.5">
+                      {b.ditutup_at ? (
+                        <Badge variant="neutral">Ditutup</Badge>
+                      ) : (
+                        <Badge variant="success">Berjalan</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-1.5 text-meta text-ink-muted">{b.cabang}</td>
+                    <td className="px-3 py-1.5 text-ink">{b.kasir}</td>
+                    <td className="px-3 py-1.5 whitespace-nowrap text-meta text-ink-muted">
+                      {formatTanggalPendek(b.dibuka_at)} {formatJam(b.dibuka_at)}
+                    </td>
+                    <td className="px-3 py-1.5 whitespace-nowrap text-meta text-ink-muted">
+                      {b.ditutup_at ? formatJam(b.ditutup_at) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 text-ink-muted tabular">{b.transaksi}</td>
+                    <td className="px-3 py-1.5 tabular">{formatRupiah(b.diterima)}</td>
+                    <td className="px-3 py-1.5 tabular">{formatRupiah(b.kas_awal)}</td>
+                    <td className="px-3 py-1.5 tabular">
+                      {b.ditutup_at ? formatRupiah(b.kas_akhir_sistem) : "—"}
+                    </td>
+                    <td className="px-3 py-1.5 tabular">
+                      {b.kas_akhir_fisik == null ? "—" : formatRupiah(b.kas_akhir_fisik)}
+                    </td>
+                    <td
+                      className={`px-3 py-1.5 tabular ${
+                        selisih == null ? "text-ink-faint" : selisih === 0 ? "text-success" : "text-danger"
+                      }`}
+                    >
+                      {selisih == null ? "—" : formatRupiah(selisih)}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </Card>
   );
 }

@@ -5,6 +5,7 @@ import { ArrowLeft } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { requireRole } from "@/lib/auth";
+import { cabangBacaDetail } from "@/lib/session";
 import { queryOne } from "@/lib/db";
 import { alasanTakBolehBatal, getTagihan, rincianTagihan } from "@/lib/cashier";
 import { formatTanggalPendek, hitungUmur } from "@/lib/format";
@@ -30,7 +31,7 @@ export default async function PembayaranPage({
   const billingId = Number(id);
   if (!Number.isInteger(billingId) || billingId <= 0) notFound();
 
-  const tagihan = await getTagihan(billingId, session.siteId);
+  const tagihan = await getTagihan(billingId, cabangBacaDetail(session));
   if (!tagihan) notFound();
 
   const [rincian, site, setelan, halanganBatal, rowPenjamin] = await Promise.all([
@@ -46,7 +47,7 @@ export default async function PembayaranPage({
     ),
     // Sebabnya dihitung di server supaya kasir melihat alasannya SEBELUM
     // menekan tombol, bukan sebagai penolakan di depan pasien.
-    alasanTakBolehBatal(billingId, session.siteId),
+    alasanTakBolehBatal(billingId, cabangBacaDetail(session)),
     /*
      * Plafon penjamin diambil terpisah, bukan ikut di `SELECT_TAGIHAN`.
      * Alasannya prinsip yang sudah berlaku di modul ini: layar kasir hanya
