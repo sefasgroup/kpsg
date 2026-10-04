@@ -15,7 +15,9 @@ const KETERANGAN: Record<string, string> = {
   "app.versi_dokumen": "Versi dokumen rujukan yang menjadi acuan sistem ini.",
   "billing.pembulatan":
     "Kelipatan pembulatan total tagihan. Pembulatan selalu ke bawah, jadi pasien tak pernah membayar lebih dari rincian. Isi 0 untuk menonaktifkan.",
-  "billing.biaya_admin": "Biaya administrasi otomatis per kunjungan.",
+  "billing.paket":
+    "Pilihan pembulatan paket di kasir, dipisah koma (mis. 125000,130000,170000,175000). Nominal terkecil menjadi biaya minimum pasien tanpa penjamin; struk paket hanya mencetak total bayar. Kosongkan untuk menonaktifkan.",
+  "billing.biaya_admin":"Biaya administrasi otomatis per kunjungan.",
   "racikan.jasa_racik_default":
     "Nilai awal jasa racik saat dokter menambah racikan baru. Dokter tetap bisa mengubahnya per racikan.",
   "antrean.reset_harian": "Nomor antrean kembali dari 001 setiap hari.",

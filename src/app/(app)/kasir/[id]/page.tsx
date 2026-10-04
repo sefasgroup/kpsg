@@ -9,6 +9,7 @@ import { cabangBacaDetail } from "@/lib/session";
 import { queryOne } from "@/lib/db";
 import { alasanTakBolehBatal, getTagihan, rincianTagihan } from "@/lib/cashier";
 import { formatTanggalPendek, hitungUmur } from "@/lib/format";
+import { uraiPaket } from "@/lib/validations/cashier";
 import { BayarClient } from "./bayar-client";
 import type { BarisStruk } from "./struk";
 
@@ -34,7 +35,7 @@ export default async function PembayaranPage({
   const tagihan = await getTagihan(billingId, cabangBacaDetail(session));
   if (!tagihan) notFound();
 
-  const [rincian, site, setelan, halanganBatal, rowPenjamin] = await Promise.all([
+  const [rincian, site, setelan, halanganBatal, rowPenjamin, setelanPaket] = await Promise.all([
     rincianTagihan(billingId),
     queryOne<SiteRow>(
       `SELECT nama, alamat, telepon FROM sites WHERE id = ?`,
@@ -60,6 +61,11 @@ export default async function PembayaranPage({
           [tagihan.payer_id],
         )
       : Promise.resolve(null),
+    queryOne<import("mysql2").RowDataPacket & { svalue: string | null }>(
+      `SELECT svalue FROM settings WHERE skey = 'billing.paket'
+        AND (site_id = ? OR site_id IS NULL) ORDER BY site_id IS NULL LIMIT 1`,
+      [tagihan.site_id],
+    ),
   ]);
 
   const plafonPenjamin = Number(rowPenjamin?.plafon_per_kunjungan ?? 0);
@@ -124,6 +130,7 @@ export default async function PembayaranPage({
         bisaDibayar={tagihan.visit_status === "menunggu_kasir"}
         halanganBatal={halanganBatal}
         pembulatanKe={Number(setelan?.svalue ?? 0)}
+        daftarPaket={uraiPaket(setelanPaket ? (setelanPaket.svalue ?? "") : null)}
         struk={{
           namaKlinik: site?.nama ?? "Klinik Pratama Sahabat Gamma",
           alamatKlinik: site?.alamat ?? null,

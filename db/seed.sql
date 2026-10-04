@@ -229,6 +229,7 @@ INSERT INTO settings (site_id, skey, svalue, tipe) VALUES
   (NULL,  'app.nama',                'SIM Klinik Sahabat Gamma', 'string'),
   (NULL,  'app.versi_dokumen',       '2.5',                       'string'),
   (@site, 'billing.pembulatan',      '100',                       'number'),
+  (@site, 'billing.paket',           '125000,130000,170000,175000', 'string'),
   (@site, 'billing.biaya_admin',     '0',                         'number'),
   (@site, 'racikan.jasa_racik_default','5000',                    'number'),
   (@site, 'antrean.reset_harian',    'true',                      'boolean'),

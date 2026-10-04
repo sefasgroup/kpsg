@@ -12,7 +12,13 @@ import { Field, Input, Select, Textarea } from "@/components/ui/field";
 import { Modal } from "@/components/ui/modal";
 import { formatDesimal, formatRupiah } from "@/lib/format";
 import { KATEGORI_LABEL } from "@/lib/billing-labels";
-import { BUTUH_REFERENSI, METODE_BAYAR, METODE_LABEL } from "@/lib/validations/cashier";
+import {
+  BUTUH_REFERENSI,
+  METODE_BAYAR,
+  METODE_LABEL,
+  hitungTotalBayar,
+  pakaiPaket,
+} from "@/lib/validations/cashier";
 import { batalkanPembayaranAction, bayarAction } from "../actions";
 import { Struk, type BarisStruk } from "./struk";
 
@@ -27,6 +33,7 @@ export function BayarClient({
   bisaDibayar,
   halanganBatal,
   pembulatanKe,
+  daftarPaket,
   penjamin,
   struk,
 }: {
@@ -40,6 +47,8 @@ export function BayarClient({
    */
   halanganBatal: string | null;
   pembulatanKe: number;
+  /** Paket pembulatan cabang (`billing.paket`), terurut naik; kosong = fitur mati. */
+  daftarPaket: number[];
   /**
    * Penjamin kunjungan ini, bila ada.
    *
@@ -77,6 +86,8 @@ export function BayarClient({
   const [metode, setMetode] = useState<string>("tunai");
   const [ref, setRef] = useState("");
   const [diskon, setDiskon] = useState(0);
+  /** Nominal pembulatan paket; 0 = tanpa paket. */
+  const [paket, setPaket] = useState(0);
   const [uang, setUang] = useState(0);
   const [catatan, setCatatan] = useState("");
   const [proses, setProses] = useState(false);
@@ -101,11 +112,15 @@ export function BayarClient({
     [baris],
   );
 
-  // Pembulatan ke bawah supaya pasien tidak pernah membayar lebih dari
-  // yang tertera pada rincian. Sama persis dengan hitungan di server.
-  const setelahDiskon = Math.max(0, subtotal - diskon);
-  const pembulatan = pembulatanKe > 1 ? -(setelahDiskon % pembulatanKe) : 0;
-  const total = setelahDiskon + pembulatan;
+  // Fungsi yang sama dengan yang dipakai server saat menyimpan.
+  const { pembulatan, total, galat: galatTotal } = hitungTotalBayar({
+    subtotal,
+    diskon,
+    paket,
+    daftarPaket,
+    pembulatanKe,
+    berpenjamin: Boolean(penjamin),
+  });
 
   const tunai = metode === "tunai";
   /*
@@ -148,6 +163,7 @@ export function BayarClient({
         payment_method: metode,
         payment_ref: ref,
         diskon,
+        paket,
         dibayar: tunai ? uang : total,
         catatan,
       });
@@ -306,7 +322,9 @@ export function BayarClient({
             ) : null}
             {nilaiStruk.pembulatan !== 0 ? (
               <div className="flex justify-between">
-                <span className="text-ink-muted">Pembulatan</span>
+                <span className="text-ink-muted">
+                  {pakaiPaket(nilaiStruk.pembulatan) ? "Pembulatan paket" : "Pembulatan"}
+                </span>
                 <span className="text-ink-muted tabular">
                   {formatRupiah(nilaiStruk.pembulatan)}
                 </span>
@@ -435,12 +453,59 @@ export function BayarClient({
                 </Field>
               ) : null}
 
-              <Field label="Diskon (Rp)">
+              {/*
+                Pembulatan paket. Disembunyikan untuk pasien berpenjamin —
+                tagihan yang diklaim tidak boleh dinaikkan. Nominal di bawah
+                total dinonaktifkan: paket membulatkan ke atas, bukan diskon.
+              */}
+              {!penjamin && daftarPaket.length > 0 ? (
+                <Field
+                  label="Pembulatan"
+                  required={subtotal - diskon < daftarPaket[0]}
+                  hint={paket > 0 ? "Struk hanya mencetak total bayar, tanpa rincian" : undefined}
+                >
+                  <div className="flex flex-wrap gap-1.5">
+                    {[0, ...daftarPaket].map((n) => {
+                      const aktif = paket === n;
+                      const takBisa = n > 0 && n < subtotal;
+                      return (
+                        <button
+                          key={n}
+                          type="button"
+                          disabled={takBisa}
+                          aria-pressed={aktif}
+                          onClick={() => {
+                            setPaket(n);
+                            // Paket menetapkan totalnya sendiri — diskon tidak berlaku.
+                            if (n > 0) setDiskon(0);
+                          }}
+                          className={`rounded-full border px-2.5 py-1 text-micro tabular disabled:cursor-not-allowed disabled:opacity-40 ${
+                            aktif
+                              ? "border-brand-500 bg-brand-50 text-brand-700"
+                              : "border-line bg-surface text-ink-muted hover:border-line-strong hover:text-ink"
+                          }`}
+                        >
+                          {n === 0 ? "Tanpa" : formatRupiah(n)}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </Field>
+              ) : null}
+
+              {galatTotal ? (
+                <p className="rounded-md border border-warning/25 bg-warning-bg px-2.5 py-1.5 text-meta text-warning">
+                  {galatTotal}
+                </p>
+              ) : null}
+
+              <Field label="Diskon (Rp)" hint={paket > 0 ? "Tidak berlaku dengan pembulatan paket" : undefined}>
                 <Input
                   type="number"
                   min={0}
                   max={subtotal}
                   step={500}
+                  disabled={paket > 0}
                   value={diskon}
                   onChange={(e) => setDiskon(Math.max(0, Number(e.target.value)))}
                 />
@@ -513,7 +578,9 @@ export function BayarClient({
                 type="button"
                 variant="primary"
                 onClick={bayar}
-                disabled={proses || kurang || (BUTUH_REF.includes(metode) && !ref.trim())}
+                disabled={
+                  proses || kurang || Boolean(galatTotal) || (BUTUH_REF.includes(metode) && !ref.trim())
+                }
               >
                 <Banknote />
                 {proses ? "Memproses…" : "Bayar & Cetak Struk"}

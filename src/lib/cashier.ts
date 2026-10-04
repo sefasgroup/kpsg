@@ -5,7 +5,7 @@ import { hitungUlangTagihan } from "./billing";
 import { bagiTanggungan } from "./penjamin";
 import { kunciKunjungan, visitIdDariTagihan } from "./kunci";
 import { kirimNotifikasi } from "./notifications";
-import type { PembayaranInput } from "./validations/cashier";
+import { hitungTotalBayar, type PembayaranInput } from "./validations/cashier";
 
 /**
  * MODUL KASIR — CLAUDE.md §2.1 poin 7.
@@ -325,6 +325,8 @@ export async function prosesPembayaran(
   shiftId: number | null,
   input: PembayaranInput,
   pembulatanKe: number,
+  /** Paket pembulatan cabang (`billing.paket`); kosong = tanpa paket & tanpa biaya minimum. */
+  daftarPaket: readonly number[] = [],
 ): Promise<{ total: number; kembalian: number; noInvoice: string }> {
   return transaction(async (conn) => {
     /*
@@ -390,14 +392,20 @@ export async function prosesPembayaran(
       throw new Error("Diskon tidak boleh melebihi subtotal tagihan.");
     }
 
-    const setelahDiskon = subtotal - input.diskon;
-    // Pembulatan ke bawah agar pasien tidak pernah membayar lebih dari
-    // yang tertera pada rincian.
-    const pembulatan =
-      pembulatanKe > 1
-        ? -(setelahDiskon % pembulatanKe)
-        : 0;
-    const total = setelahDiskon + pembulatan;
+    /*
+     * Pembulatan cabang (ke bawah) atau paket (ke atas, sekaligus biaya
+     * minimum). Aturannya hidup di `hitungTotalBayar()` — layar kasir
+     * memakai fungsi yang sama untuk pratinjaunya.
+     */
+    const { pembulatan, total, galat } = hitungTotalBayar({
+      subtotal,
+      diskon: input.diskon,
+      paket: input.paket ?? 0,
+      daftarPaket,
+      pembulatanKe,
+      berpenjamin: Boolean(bt.payer_id),
+    });
+    if (galat) throw new Error(galat);
 
     /*
      * Yang ditagih ke PASIEN hanya bagiannya.

@@ -10,7 +10,7 @@ import {
   shiftAktif,
   tutupShift,
 } from "@/lib/cashier";
-import { pembayaranSchema, tutupShiftSchema } from "@/lib/validations/cashier";
+import { pembayaranSchema, tutupShiftSchema, uraiPaket } from "@/lib/validations/cashier";
 
 const ROLE_KASIR = ["kasir", "super_admin"] as const;
 
@@ -25,6 +25,16 @@ async function pembulatanCabang(siteId: number): Promise<number> {
     [siteId],
   );
   return Number(row?.svalue ?? 0);
+}
+
+/** Paket pembulatan cabang — lihat `uraiPaket()`; baris tidak ada = nilai bawaan. */
+async function paketCabang(siteId: number): Promise<number[]> {
+  const row = await queryOne<import("mysql2").RowDataPacket & { svalue: string | null }>(
+    `SELECT svalue FROM settings WHERE skey = 'billing.paket'
+      AND (site_id = ? OR site_id IS NULL) ORDER BY site_id IS NULL LIMIT 1`,
+    [siteId],
+  );
+  return uraiPaket(row ? (row.svalue ?? "") : null);
 }
 
 export async function bayarAction(
@@ -56,6 +66,7 @@ export async function bayarAction(
       shiftId,
       parsed.data,
       await pembulatanCabang(siteId),
+      await paketCabang(siteId),
     );
 
     await auditLog({
@@ -67,6 +78,7 @@ export async function bayarAction(
         no_invoice: hasil.noInvoice,
         total: hasil.total,
         metode: parsed.data.payment_method,
+        paket: parsed.data.paket || null,
         ref: parsed.data.payment_ref ?? null,
       },
     });

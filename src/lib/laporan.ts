@@ -174,19 +174,32 @@ export async function pendapatanKategori(
  * angka Pendapatan adalah total tagihan setelah diskon dan pembulatan.
  * Tanpa baris penyesuaian ini kedua angka di layar yang sama tidak pernah
  * cocok, dan selisihnya terbaca seperti uang yang hilang.
+ *
+ * Kolom `pembulatan` memuat dua hal yang dipisah di sini menurut tandanya:
+ *   - NEGATIF = pembulatan cabang ke bawah (`billing.pembulatan`) — potongan;
+ *   - POSITIF = selisih pembulatan paket (`billing.paket`) — dibukukan
+ *     sebagai PENDAPATAN LAIN-LAIN, bukan jasa atau obat.
+ * Digabung, keduanya saling menutupi: tambahan puluhan ribu dari paket
+ * tersamar oleh potongan ratusan rupiah dari pembulatan cabang.
  */
 export async function penyesuaianPendapatan(
   siteId: number,
   dari: string,
   sampai: string,
-): Promise<{ diskon: number; pembulatan: number }> {
-  const r = await queryOne<RowDataPacket & { diskon: string; pembulatan: string }>(
-    `SELECT COALESCE(SUM(bt.diskon), 0) AS diskon, COALESCE(SUM(bt.pembulatan), 0) AS pembulatan
+): Promise<{ diskon: number; pembulatan: number; selisihPaket: number }> {
+  const r = await queryOne<RowDataPacket & { diskon: string; pembulatan: string; paket: string }>(
+    `SELECT COALESCE(SUM(bt.diskon), 0) AS diskon,
+            COALESCE(SUM(LEAST(bt.pembulatan, 0)), 0) AS pembulatan,
+            COALESCE(SUM(GREATEST(bt.pembulatan, 0)), 0) AS paket
        FROM billing_transactions bt
       WHERE bt.site_id = ? AND bt.status = 'lunas' AND DATE(bt.paid_at) BETWEEN ? AND ?`,
     [siteId, dari, sampai],
   );
-  return { diskon: Number(r?.diskon ?? 0), pembulatan: Number(r?.pembulatan ?? 0) };
+  return {
+    diskon: Number(r?.diskon ?? 0),
+    pembulatan: Number(r?.pembulatan ?? 0),
+    selisihPaket: Number(r?.paket ?? 0),
+  };
 }
 
 export type MetodeBayar = RowDataPacket & {

@@ -3,7 +3,7 @@
 import { forwardRef } from "react";
 import { formatDesimal, formatRupiah, formatTanggalPendek } from "@/lib/format";
 import { KATEGORI_LABEL } from "@/lib/billing-labels";
-import { METODE_LABEL } from "@/lib/validations/cashier";
+import { METODE_LABEL, pakaiPaket } from "@/lib/validations/cashier";
 
 export type BarisStruk = {
   kategori: string;
@@ -22,6 +22,10 @@ export type BarisStruk = {
  *
  * Struk TIDAK memuat diagnosa — `deskripsi` berasal dari `billing_items`
  * yang memang tidak menyimpannya (CLAUDE.md §2.1 poin 7).
+ *
+ * Bila dibayar dengan pembulatan paket, struk RINGKAS: hanya "Biaya
+ * Konsultasi + Obat" dan total bayar — rincian per baris tidak dicetak,
+ * karena angkanya tidak akan pernah berjumlah sama dengan totalnya.
  */
 export const Struk = forwardRef<
   HTMLDivElement,
@@ -49,6 +53,7 @@ export const Struk = forwardRef<
   }
 >(function Struk(p, ref) {
   const kategori = [...new Set(p.baris.map((b) => b.kategori))];
+  const ringkas = pakaiPaket(p.pembulatan);
 
   return (
     <div ref={ref} className="struk">
@@ -121,7 +126,9 @@ export const Struk = forwardRef<
 
       <div className="s-hr" />
 
-      {kategori.map((k) => (
+      {ringkas ? (
+        <div className="s-item">Biaya Konsultasi + Obat</div>
+      ) : kategori.map((k) => (
         <div key={k}>
           <div className="s-kat">{KATEGORI_LABEL[k] ?? k}</div>
           {p.baris
@@ -144,24 +151,28 @@ export const Struk = forwardRef<
 
       <div className="s-hr" />
 
-      <div className="s-row">
-        <span>Subtotal</span>
-        <span>{formatRupiah(p.subtotal)}</span>
-      </div>
-      {p.diskon > 0 ? (
-        <div className="s-row">
-          <span>Diskon</span>
-          <span>-{formatRupiah(p.diskon)}</span>
-        </div>
-      ) : null}
-      {p.pembulatan !== 0 ? (
-        <div className="s-row">
-          <span>Pembulatan</span>
-          <span>{formatRupiah(p.pembulatan)}</span>
-        </div>
-      ) : null}
+      {ringkas ? null : (
+        <>
+          <div className="s-row">
+            <span>Subtotal</span>
+            <span>{formatRupiah(p.subtotal)}</span>
+          </div>
+          {p.diskon > 0 ? (
+            <div className="s-row">
+              <span>Diskon</span>
+              <span>-{formatRupiah(p.diskon)}</span>
+            </div>
+          ) : null}
+          {p.pembulatan !== 0 ? (
+            <div className="s-row">
+              <span>Pembulatan</span>
+              <span>{formatRupiah(p.pembulatan)}</span>
+            </div>
+          ) : null}
+        </>
+      )}
       <div className="s-row s-total">
-        <span>TOTAL</span>
+        <span>{ringkas ? "TOTAL BAYAR" : "TOTAL"}</span>
         <span>{formatRupiah(p.total)}</span>
       </div>
 

@@ -39,6 +39,8 @@ export type CabangRow = RowDataPacket & {
  */
 const DEFAULT_SETTING_CABANG: readonly (readonly [string, string, string])[] = [
   ["billing.pembulatan", "0", "number"],
+  // Sama dengan PAKET_BAWAAN (validations/cashier.ts) — perilaku cabang lama tanpa baris ini.
+  ["billing.paket", "125000,130000,170000,175000", "string"],
   ["billing.biaya_admin", "0", "number"],
   ["racikan.jasa_racik_default", "0", "number"],
   ["antrean.reset_harian", "true", "boolean"],

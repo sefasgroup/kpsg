@@ -16,6 +16,9 @@ import { formatAngka, formatRupiah, formatTanggalPendek } from "@/lib/format";
 import { METODE_LABEL as METODE_LABEL_KASIR } from "@/lib/validations/cashier";
 import { tanggalHariIni, tanggalValid, tambahHari } from "@/lib/tanggal";
 
+/** Pos semu untuk selisih pembulatan paket — bukan kategori `billing_items`. */
+const POS_LAIN_LAIN = "__pendapatan_lain";
+
 export const metadata: Metadata = { title: "Laporan Cabang" };
 export const dynamic = "force-dynamic";
 
@@ -58,7 +61,17 @@ export default async function LaporanPage({
       penyesuaianPendapatan(siteId, dari, sampai),
     ]);
 
-  const totalKategori = kategori.reduce((n, k) => n + Number(k.nilai), 0);
+  /*
+   * Selisih pembulatan paket dibukukan sebagai pos tersendiri —
+   * PENDAPATAN LAIN-LAIN — bukan dibagi ke jasa dokter atau obat.
+   */
+  const pos = [
+    ...kategori.map((k) => ({ kategori: k.kategori, nilai: Number(k.nilai) })),
+    ...(sesuai.selisihPaket > 0
+      ? [{ kategori: POS_LAIN_LAIN, nilai: sesuai.selisihPaket }]
+      : []),
+  ].sort((a, b) => b.nilai - a.nilai);
+  const totalKategori = pos.reduce((n, k) => n + k.nilai, 0);
   const puncakHarian = Math.max(1, ...harian.map((h) => Number(h.kunjungan)));
 
   return (
@@ -195,20 +208,22 @@ export default async function LaporanPage({
           <CardHeader>
             <CardTitle icon={Wallet}>Komposisi Pendapatan</CardTitle>
           </CardHeader>
-          {kategori.length === 0 ? (
+          {pos.length === 0 ? (
             <p className="rounded-md border border-dashed border-line px-3 py-8 text-center text-meta text-ink-faint">
               Belum ada transaksi lunas pada periode ini.
             </p>
           ) : (
             <>
               <ul className="flex flex-col gap-2">
-                {kategori.map((k) => {
-                  const persen = totalKategori > 0 ? (Number(k.nilai) / totalKategori) * 100 : 0;
+                {pos.map((k) => {
+                  const persen = totalKategori > 0 ? (k.nilai / totalKategori) * 100 : 0;
                   return (
                     <li key={k.kategori}>
                       <div className="flex items-baseline justify-between gap-3 text-body">
                         <span className={k.kategori === "racikan" || k.kategori === "jasa_racik" ? "text-racikan" : "text-ink"}>
-                          {KATEGORI_LABEL[k.kategori] ?? k.kategori}
+                          {k.kategori === POS_LAIN_LAIN
+                            ? "Pendapatan lain-lain (selisih paket)"
+                            : (KATEGORI_LABEL[k.kategori] ?? k.kategori)}
                         </span>
                         <span className="tabular text-ink">
                           {formatRupiah(k.nilai)}
@@ -234,7 +249,7 @@ export default async function LaporanPage({
               {/* Rekonsiliasi: nilai kotor per kategori → pendapatan bersih. */}
               {sesuai.diskon !== 0 || sesuai.pembulatan !== 0 ? (
                 <dl className="mt-3 grid grid-cols-[1fr_auto] gap-x-3 gap-y-0.5 border-t border-dashed border-line pt-2 text-meta">
-                  <dt className="text-ink-muted">Jumlah kategori</dt>
+                  <dt className="text-ink-muted">Jumlah pos</dt>
                   <dd className="text-right tabular text-ink">{formatRupiah(totalKategori)}</dd>
                   {sesuai.diskon !== 0 ? (
                     <>
@@ -244,7 +259,7 @@ export default async function LaporanPage({
                   ) : null}
                   {sesuai.pembulatan !== 0 ? (
                     <>
-                      <dt className="text-ink-muted">Pembulatan</dt>
+                      <dt className="text-ink-muted">Pembulatan cabang</dt>
                       <dd className="text-right tabular text-ink">{formatRupiah(sesuai.pembulatan)}</dd>
                     </>
                   ) : null}
