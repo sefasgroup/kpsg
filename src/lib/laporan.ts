@@ -262,6 +262,9 @@ export type ProduktivitasDokter = RowDataPacket & {
   sebagai_pengganti: number;
   asesmen_final: number;
   resep: number;
+  /** Baris "Jasa Dokter" saja — dasar bagi hasil; tidak termasuk obat, lab, atau selisih paket. */
+  jasa_dokter: string;
+  /** Total seluruh tagihan kunjungan yang dilayani dokter ini. */
   pendapatan: string;
 };
 
@@ -280,6 +283,9 @@ export async function produktivitasDokter(
             SUM(v.substitute_doctor_id IS NOT NULL) AS sebagai_pengganti,
             SUM(ma.status = 'final') AS asesmen_final,
             COUNT(DISTINCT rx.id) AS resep,
+            COALESCE(SUM(CASE WHEN bt.status = 'lunas' THEN
+              (SELECT SUM(bi.subtotal) FROM billing_items bi
+                WHERE bi.billing_id = bt.id AND bi.kategori = 'jasa_dokter') END), 0) AS jasa_dokter,
             COALESCE(SUM(CASE WHEN bt.status = 'lunas' THEN bt.total END), 0) AS pendapatan
        FROM visits v
        JOIN users d ON d.id = COALESCE(v.substitute_doctor_id, v.doctor_id)

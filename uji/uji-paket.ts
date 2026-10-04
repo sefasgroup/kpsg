@@ -18,7 +18,7 @@ import { execute, pool, query, queryOne, transaction } from "../src/lib/db";
 import { hitungUlangTagihan, pastikanTagihan, tambahBarisTagihan } from "../src/lib/billing";
 import { batalkanPembayaran, prosesPembayaran } from "../src/lib/cashier";
 import { simpanPenjamin } from "../src/lib/penjamin";
-import { penyesuaianPendapatan } from "../src/lib/laporan";
+import { penyesuaianPendapatan, produktivitasDokter } from "../src/lib/laporan";
 import {
   PAKET_BAWAAN, hitungTotalBayar, pakaiPaket, pembayaranSchema, uraiPaket,
 } from "../src/lib/validations/cashier";
@@ -220,6 +220,13 @@ try {
     lap.selisihPaket === 27000, String(lap.selisihPaket));
   ok("pembulatan cabang ke bawah tidak tercampur (−500)",
     lap.pembulatan === -500, String(lap.pembulatan));
+
+  // Lunas: 98.000 (paket 125.000), 140.000, 50.000 (penjamin), 140.500 (dibulatkan 140.000).
+  const [prod] = await produktivitasDokter(site, hariIni, hariIni);
+  ok("produktivitas: Jasa Dokter = baris jasa dokter saja, tanpa selisih paket",
+    Number(prod?.jasa_dokter) === 428500, String(prod?.jasa_dokter));
+  ok("produktivitas: Total Tagihan tetap total tagihan kunjungan",
+    Number(prod?.pendapatan) === 455000, String(prod?.pendapatan));
 
   // ===================================================================
   console.log("\n== 6. Pembatalan menolkan paket ==");

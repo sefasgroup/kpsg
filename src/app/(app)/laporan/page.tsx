@@ -363,7 +363,7 @@ export default async function LaporanPage({
             <table className="w-full border-collapse text-body">
               <thead>
                 <tr className="bg-surface-alt">
-                  {["Dokter", "Kunjungan", "Sebagai Pengganti", "Asesmen Final", "Resep", "Pendapatan"].map((c) => (
+                  {["Dokter", "Kunjungan", "Sebagai Pengganti", "Asesmen Final", "Resep", "Jasa Dokter", "Total Tagihan"].map((c) => (
                     <th key={c} className="border-b border-line px-3 py-2 text-left text-label font-medium whitespace-nowrap text-ink-muted">
                       {c}
                     </th>
@@ -395,7 +395,8 @@ export default async function LaporanPage({
                         ) : null}
                       </td>
                       <td className="px-3 py-1.5 tabular text-ink-muted">{Number(d.resep)}</td>
-                      <td className="px-3 py-1.5 tabular text-ink">{formatRupiah(d.pendapatan)}</td>
+                      <td className="px-3 py-1.5 tabular text-ink">{formatRupiah(d.jasa_dokter)}</td>
+                      <td className="px-3 py-1.5 tabular text-ink-muted">{formatRupiah(d.pendapatan)}</td>
                     </tr>
                   );
                 })}
