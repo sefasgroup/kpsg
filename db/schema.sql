@@ -1538,3 +1538,31 @@ ALTER TABLE billing_transactions
 CREATE INDEX ix_bt_payer ON billing_transactions (payer_id, status);
 
 CREATE INDEX ix_items_sipnap ON items (is_narkotika, is_psikotropika);
+
+-- ---------------------------------------------------------------------
+-- Catatan migrasi (scripts/migrasi.mjs, dijalankan otomatis saat deploy).
+--
+-- Skema ini SUDAH memuat seluruh isi db/migrasi/, jadi semuanya dicatat
+-- sebagai terpasang. Setiap migrasi baru WAJIB juga ditambahkan ke daftar
+-- ini — tanpanya pemasangan baru menjalankan ulang migrasi yang isinya
+-- sudah ada di atas, dan gagal.
+-- ---------------------------------------------------------------------
+CREATE TABLE schema_migrations (
+  nama          VARCHAR(190) NOT NULL,
+  cara          ENUM('dijalankan','baseline') NOT NULL DEFAULT 'dijalankan',
+  dijalankan_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (nama)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+INSERT INTO schema_migrations (nama, cara) VALUES
+  ('2026-08-02-lampiran-kunjungan.sql', 'baseline'),
+  ('2026-08-02-pengkajian-tambahan.sql', 'baseline'),
+  ('2026-08-02-prioritas-antrean.sql', 'baseline'),
+  ('2026-08-03-bayar-sebelum-obat.sql', 'baseline'),
+  ('2026-08-03-konsultasi-diskon.sql', 'baseline'),
+  ('2026-08-03-soap-detail.sql', 'baseline'),
+  ('2026-08-18-alur-lab-dan-pembatalan.sql', 'baseline'),
+  ('2026-08-18-penjamin-klaim-kepatuhan.sql', 'baseline'),
+  ('2026-08-18-resep-terbit-ulang.sql', 'baseline'),
+  ('2026-08-19-indeks-buku-besar.sql', 'baseline'),
+  ('2026-10-04-pembulatan-paket.sql', 'baseline');

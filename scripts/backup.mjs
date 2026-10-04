@@ -113,6 +113,9 @@ const argDump = [
   "--port", String(env.DB_PORT ?? 3306),
   "--user", env.DB_USER ?? "root",
   "--single-transaction",
+  // MySQL 8.0.21+ meminta hak PROCESS untuk dump tablespace; akun aplikasi
+  // biasanya tidak punya, dan sistem ini tidak memakai tablespace.
+  "--no-tablespaces",
   "--routines",
   "--triggers",
   "--events",

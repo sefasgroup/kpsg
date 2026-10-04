@@ -12,6 +12,7 @@
     "lint": "eslint",
     "typecheck": "tsc --noEmit",
     "db:reset": "mysql -u root < db/schema.sql && mysql -u root < db/seed.sql",
+    "db:migrasi": "node scripts/migrasi.mjs",
     "sapu:tertunda": "node uji/jalankan.mjs scripts/sapu-tertunda.ts",
     "simulasi": "node uji/jalankan.mjs uji/simulasi-klinik.ts",
     "uji": "node uji/jalankan.mjs"

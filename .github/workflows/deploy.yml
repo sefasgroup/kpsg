@@ -54,6 +54,13 @@ jobs:
             echo "Aktif: $AKTIF — build ke: $BARU"
             NEXT_DIST_DIR=$BARU npm run build
 
+            # --- 3b. Migrasi basis data -----------------------------------
+            # SETELAH build: build yang gagal tidak menyentuh basis data.
+            # SEBELUM restart: migrasi yang gagal menghentikan deploy, dan
+            # server tetap melayani versi lama. Hanya berkas db/migrasi yang
+            # belum tercatat yang dijalankan, didahului backup.
+            node scripts/migrasi.mjs
+
             # --- 4. Pindahkan server ke build baru -------------------------
             NEXT_DIST_DIR=$BARU pm2 restart kpsg-app --update-env
 
