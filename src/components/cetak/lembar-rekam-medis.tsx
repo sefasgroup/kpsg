@@ -72,6 +72,13 @@ export const LembarRekamMedis = forwardRef<HTMLDivElement, DataRekamMedis>(
                        border-bottom: 0.3mm solid #cfd8d5; padding-bottom: 1mm;
                        margin: 4mm 0 1.5mm; }
           .mr-teks { white-space: pre-line; }
+          /* Baris "label : isi" — label selebar tetap supaya titik duanya
+             sejajar, isi panjang turun di bawah isi, bukan di bawah label. */
+          .mr-row { display: flex; gap: 1.5mm; margin-bottom: 0.6mm; }
+          .mr-row .k { width: 32mm; flex-shrink: 0; color: #444;
+                       display: flex; justify-content: space-between; }
+          .mr-row .k::after { content: ":"; }
+          .mr-row .v { flex: 1; min-width: 0; white-space: pre-line; }
           .mr-kosong { color: #777; }
           .mr-ttv { display: flex; flex-wrap: wrap; gap: 1mm 5mm; }
           ol.mr-list, ul.mr-list { margin: 0 0 0 5mm; padding: 0; }

@@ -124,8 +124,10 @@ export const LembarRiwayat = forwardRef<HTMLDivElement, DataResume>(
                            border-bottom: 0.25mm solid #e3e9e7; padding-bottom: 1mm;
                            margin-bottom: 1.5mm; font-weight: 700; }
           .rm-row { display: flex; gap: 2mm; margin-bottom: 0.8mm; }
-          .rm-row .k { width: 26mm; flex-shrink: 0; color: #555; }
-          .rm-row .v { white-space: pre-line; }
+          .rm-row .k { width: 26mm; flex-shrink: 0; color: #555;
+                       display: flex; justify-content: space-between; }
+          .rm-row .k::after { content: ":"; }
+          .rm-row .v { flex: 1; min-width: 0; white-space: pre-line; }
           table.rm-lab { width: 100%; border-collapse: collapse; font-size: 8.5pt; }
           table.rm-lab th, table.rm-lab td {
             border: 0.25mm solid #cfd8d5; padding: 1mm 1.5mm; text-align: left;
